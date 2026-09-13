@@ -1,0 +1,109 @@
+# 🚀 Render Cloud Blueprint: Multi-Service Autonomous Bot System
+# Document Version: 1.0.0
+# Architecture: n8n Webhook + Hermes Agent + 9Router AI Gateway + Managed Postgres
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Layanan Middleware & Webhook Ingestion (Public Web Service)
+  # ---------------------------------------------------------------------------
+  - type: web
+    name: enterprise-n8n-middleware
+    env: docker
+    image:
+      url: docker.io/n8nio/n8n:latest
+    plan: starter
+    region: singapore
+    healthCheckPath: /healthz
+    disk:
+      name: n8n-storage
+      mountPath: /home/node/.n8n
+      sizeGB: 10
+    envVars:
+      - key: PORT
+        value: "5678"
+      - key: N8N_PORT
+        value: "5678"
+      - key: N8N_PROTOCOL
+        value: https
+      - key: WEBHOOK_URL
+        value: https://enterprise-n8n-middleware.onrender.com/
+      - key: N8N_ENCRYPTION_KEY
+        generateValue: true
+      - key: DB_TYPE
+        value: postgresdb
+      - key: DB_POSTGRESDB_HOST
+        fromDatabase:
+          name: bot-db-cluster
+          property: host
+      - key: DB_POSTGRESDB_PORT
+        fromDatabase:
+          name: bot-db-cluster
+          property: port
+      - key: DB_POSTGRESDB_DATABASE
+        fromDatabase:
+          name: bot-db-cluster
+          property: database
+      - key: DB_POSTGRESDB_USER
+        fromDatabase:
+          name: bot-db-cluster
+          property: user
+      - key: DB_POSTGRESDB_PASSWORD
+        fromDatabase:
+          name: bot-db-cluster
+          property: password
+
+  # ---------------------------------------------------------------------------
+  # 2. Layanan Engine Hermes Agent (Private Background Worker)
+  # ---------------------------------------------------------------------------
+  - type: worker
+    name: hermes-agent-engine
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: singapore
+    disk:
+      name: hermes-storage
+      mountPath: /app/hermes/data
+      sizeGB: 15
+    envVars:
+      - key: HERMES_MODE
+        value: daemon
+      - key: OPENAI_BASE_URL
+        value: http://nine-router-proxy:20128/v1
+      - key: OPENAI_API_KEY
+        value: dummy-9router-key
+      - key: WHATSAPP_FAILOVER_TO_LOCAL
+        value: "true"
+      - key: WHATSAPP_LOCAL_GATEWAY_URL
+        value: http://127.0.0.1:3000/api/send
+
+  # ---------------------------------------------------------------------------
+  # 3. Layanan Proxy 9Router (Private Internal Service - Port 20128)
+  # ---------------------------------------------------------------------------
+  - type: pserv
+    name: nine-router-proxy
+    env: docker
+    image:
+      url: docker.io/decolua/9router:latest
+    plan: starter
+    region: singapore
+    disk:
+      name: ninerouter-storage
+      mountPath: /app/data
+      sizeGB: 5
+    envVars:
+      - key: PORT
+        value: "20128"
+      - key: DATA_DIR
+        value: /app/data
+
+databases:
+  # ---------------------------------------------------------------------------
+  # 4. Managed PostgreSQL Database (Private Network Isolation)
+  # ---------------------------------------------------------------------------
+  - name: bot-db-cluster
+    databaseName: bot_production
+    user: bot_admin
+    plan: starter
+    region: singapore
+    ipAllowList: [] # Keamanan Mutlak: Menolak Akses Publik Langsung

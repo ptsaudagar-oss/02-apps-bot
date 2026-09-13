@@ -1,0 +1,25 @@
+# Environments & Secrets
+.env
+.env.local
+*.env
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Runtime Logs
+logs/*.log
+*.log
+
+# Sensitive Credentials
+credentials.json
+token.json
+client_secrets.json
+
+# Operating System & IDE Artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
