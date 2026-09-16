@@ -1,9 +1,9 @@
-# 🐳 Dockerfile for 02-TELEGRAM_BOT (Gmail & Telegram 24/7 Cloud Engine)
+# 🐳 Dockerfile for 02-TELEGRAM_BOT (Gmail & Telegram Autonomous Engine)
 FROM python:3.11-slim
 
 LABEL maintainer="PT. Saudagar <pt.saudagar@gmail.com>"
 LABEL service="telegram-gmail-bot"
-LABEL description="Autonomous 24/7 Telegram Gmail Assistant for Render.com"
+LABEL description="Autonomous Telegram Gmail Assistant Container"
 
 WORKDIR /app
 

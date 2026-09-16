@@ -307,7 +307,7 @@ def cmd_dashboard():
         ("DELTA", "FastAPI & Ingestion SLA", "HEALTHY", f"{lat['avg_latency_ms']}ms ACK SLA (<150ms)"),
         ("EPSILON", "WhatsApp & Telegram Engine", "DISPATCHING", f"{disp['active_ram_sessions']} sessions"),
         ("FARAD", "Composio MCP & Postman", "BOUND", "OAuth 2.0 / gws verified"),
-        ("LAMBDA", "Render Cloud & PostgreSQL", "DEPLOYED", "render.yaml Blueprint active"),
+        ("LAMBDA", "Sovereign Cloud & DB", "PURGED", "Render purged; Local/Docker active"),
         ("THETA", "Tunnel & Reverse Proxy", "STANDBY", "HTTPS Bridge Ready"),
         ("OMEGA", "Master QC & Security Enclave", "PASSED", "18 Unit Tests OK, Zero Leakage"),
     ]

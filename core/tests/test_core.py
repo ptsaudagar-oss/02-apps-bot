@@ -267,11 +267,11 @@ class TestCoreFramework(unittest.TestCase):
         self.assertLess(rearm_lat, 50.0, "Re-arm latency must be under 50ms SLA")
 
     def test_iac_blueprint_validation(self):
-        """Verify Pillar 3: Render Cloud IaC Blueprint & PostgreSQL Isolation."""
+        """Verify Pillar 3: Sovereign Cloud/Container IaC & Database Isolation (Render Purged)."""
         from core.iac_validator import iac_validator
 
         is_valid, errors, summary = iac_validator.validate()
-        self.assertTrue(is_valid, f"render.yaml must be valid: {errors}")
+        self.assertTrue(is_valid, f"IaC Blueprint must be valid: {errors}")
         self.assertIn("enterprise-n8n-middleware", summary["services_found"])
         self.assertIn("hermes-agent-engine", summary["services_found"])
         self.assertIn("nine-router-proxy", summary["services_found"])

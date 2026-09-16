@@ -79,7 +79,7 @@ class TelegramGmailBotEngine(BaseBotEngine):
         }
 
     async def _handle_http_health_check(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
-        """Handles incoming HTTP GET health probes from Cloud Platforms (Render, Railway, Fly.io)."""
+        """Handles incoming HTTP GET health probes from Cloud Platforms / Container environments."""
         try:
             line = await reader.readline()
             while True:
@@ -125,7 +125,7 @@ class TelegramGmailBotEngine(BaseBotEngine):
         health = self.health_check()
         logger.info(f"Health check status: {health}")
 
-        # Cloud HTTP Health Check Support (Render.com Web Service requirement)
+        # Cloud / Container HTTP Health Check Support
         port_env = os.getenv("PORT") or os.getenv("TELEGRAM_BOT_PORT")
         if port_env:
             try:
