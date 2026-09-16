@@ -1,0 +1,57 @@
+# 🚀 Koyeb Deployment Specification: 24/7 Autonomous Bot Ecosystem
+# Platform: Koyeb.com | Region: sin (Singapore)
+# Architecture: Telegram Gmail Bot (Standalone Service) + Webhook Gateway
+
+name: apps-bot
+
+services:
+  # ---------------------------------------------------------------------------
+  # 1. Telegram Gmail Assistant (Autonomous 24/7 Engine)
+  # ---------------------------------------------------------------------------
+  - name: telegram-gmail-bot
+    type: web
+    git:
+      repository: github.com/ptsaudagar-oss/02-apps-bot
+      branch: main
+      dockerfile: Dockerfile.telegram
+    instance_type: nano
+    regions:
+      - sin
+    ports:
+      - port: 8000
+        path: /
+    health_checks:
+      - port: 8000
+        http:
+          path: /health
+          method: GET
+    routes:
+      - path: /
+        port: 8000
+    env:
+      - key: PORT
+        value: "8000"
+      - key: PRODUCTION_MODE
+        value: "true"
+      - key: GMAIL_AUTH_MODE
+        value: app_password
+      - key: GMAIL_CHECK_INTERVAL_SECONDS
+        value: "60"
+      - key: GMAIL_PRIMARY_ACCOUNT
+        value: pt.saudagar@gmail.com
+      - key: GMAIL_ECOMMERCE_ACCOUNT
+        value: 8m.shop.online@gmail.com
+      - key: GMAIL_OWNER_ACCOUNT
+        value: kafnun84@gmail.com
+      - key: TELEGRAM_AUTHORIZED_CHAT_IDS
+        value: "7828326094"
+      - key: TELEGRAM_POLLING_INTERVAL
+        value: "2"
+      - key: ENCLAVE_PII_REDACTION
+        value: "true"
+      - key: AUTO_TRIGGER_INTERVAL_SECONDS
+        value: "60"
+      - key: APM_PROJECT_CODENAME
+        value: Antigravity Assistant Production Manager
+      - key: APM_ORGANIZATION
+        value: PT. Saudagar

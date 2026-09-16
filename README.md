@@ -188,7 +188,7 @@ Ekosistem APPS_BOT mengandalkan 5 dokumen konteks sebagai sumber kebenaran (*sou
 | Dokumen | Fungsi | Injeksi Ke |
 |:--|:--|:--|
 | **`SOUL.md`** | Persona, guardrails, dan core directives. Mendefinisikan identitas APM, F.O.R.G.E. methodology, dan Zero-Crash Policy. | AI system prompt, `/start` greeting, `@zero_crash` decorator |
-| **`MEMORY.md`** | Architecture map, endpoint aktif, cloud state, multi-account live state, dan MCP tool gateways. | `/status` command, CLI diagnostics, Render env vars |
+| **`MEMORY.md`** | Architecture map, endpoint aktif, cloud state, multi-account live state, dan MCP tool gateways. | `/status` command, CLI diagnostics, Koyeb env vars |
 | **`USER.md` / `USER-v2.md`** | Profil pemilik, preferensi komunikasi, dan standar governance. | AI tone & style, response branding, Docker labels |
 | **`SKILL.md`** | Prosedur klasifikasi email 5 langkah (Sanitize → Classify → Score → Action → Validate). | `ai_helper.classify_email()` procedural workflow |
 | **`ANTIGRAVITY_PARALLEL_ORCHESTRATION-v2.md`** | Master System Directive untuk dekomposisi DAG, 9 Agent IDs (Alpha-Omega), Privacy Enclave, dan Git Shadow Worktrees. | `context_loader.get_orchestration()`, CLI `context`, multi-agent workflows |

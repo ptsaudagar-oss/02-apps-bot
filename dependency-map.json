@@ -29,7 +29,7 @@
       "status": "ACTIVE"
     },
     "AGENT_LAMBDA": {
-      "role": "Render Cloud IaC, Docker & Postgres Private DNS",
+      "role": "Koyeb Cloud 24/7 Deployment, Docker & Postgres Private DNS",
       "status": "ACTIVE"
     },
     "AGENT_THETA": {

@@ -20,7 +20,7 @@ Sistem tidak lagi beroperasi secara sekuensial monolitik, melainkan mendekomposi
 │       ├──► [ AGENT DELTA ]   : n8n Workflow Engine & FastAPI Webhook Server (Fast ACK <150ms)           │
 │       ├──► [ AGENT EPSILON ] : WHATSAPP (Meta v21.0 & Local Bridge) & TELEGRAM (@BotFather, /apps)      │
 │       ├──► [ AGENT FARAD ]   : COMPOSIO MCP Gateway, POSTMAN MCP (146+ Tools) & Google Workspace (gws)  │
-│       ├──► [ AGENT LAMBDA ]  : RENDER Cloud, VERCEL, DOCKER, FIREBASE, FIRESTORE & Managed PostgreSQL   │
+│       ├──► [ AGENT LAMBDA ]  : KOYEB Cloud (sin), VERCEL, DOCKER, FIREBASE, FIRESTORE & Managed PostgreSQL│
 │       ├──► [ AGENT THETA ]   : NGROK, CLOUDFLARE TUNNEL & HTTPS Reverse Proxy Local                     │
 │       └──► [ AGENT OMEGA ]   : Master CLI QC (18 Unit Tests), gVisor Sandbox & AI Security Audit Pro   │
 │                                                                                                         │
@@ -83,9 +83,9 @@ Setiap Agen memiliki **ID Khusus**, **Stasioner Kerja Terisolasi (Git Shadow Wor
 
 ### ☁️ 7. AGENT LAMBDA (`agent-lambda-cloud-db`)
 * **Identitas**: Cloud Infrastructure, Serverless & Database Deployment Manager.
-* **Tools & Platform**: RENDER Cloud Platform (`render.yaml` IaC Blueprint), VERCEL, DOCKER, FIREBASE, FIRESTORE, Managed PostgreSQL (`ipAllowList: []`).
+* **Tools & Platform**: KOYEB Cloud Platform (`koyeb.yaml` Blueprint), VERCEL, DOCKER, FIREBASE, FIRESTORE, Managed PostgreSQL (`ipAllowList: []`).
 * **Fokus Operasional**:
-  1. Mengelola deployment multi-service di Render Cloud (`enterprise-n8n-middleware`, `hermes-agent-engine`, `nine-router-proxy`).
+  1. Mengelola deployment multi-service di Koyeb Cloud Region Singapore (`telegram-gmail-bot`, `n8n-middleware`, `nine-router-proxy`).
   2. Mengonfigurasi Managed PostgreSQL dengan aturan keamanan `ipAllowList: []` (akses privat internal saja).
   3. Mengelola integrasi serverless di Vercel, sync data di Firebase / Firestore, dan kontainerisasi Docker.
 
@@ -117,7 +117,7 @@ Setiap Agen memiliki **ID Khusus**, **Stasioner Kerja Terisolasi (Git Shadow Wor
 | **AGENT DELTA** | `shadow-worktree-delta` | n8n Engine, FastAPI (Port 8080), Uvicorn | Webhook Ingestion, Fast ACK <150ms & RAM Session [cite: 196, 321]. |
 | **AGENT EPSILON** | `shadow-worktree-epsilon` | WhatsApp Meta v21.0, Telegram Bot API | Dual Dispatcher, Inline Buttons & Mini Apps `/apps` [cite: 180, 203]. |
 | **AGENT FARAD** | `shadow-worktree-farad` | Composio MCP, Postman MCP, `gws`, REST API | OAuth 1.500+ SaaS Apps, JIT Tools & API Testing [cite: 323, 325]. |
-| **AGENT LAMBDA** | `shadow-worktree-lambda` | Render (`render.yaml`), Vercel, Docker, Postgres | Cloud IaC, Serverless, Docker & Isolated DB [cite: 135, 324]. |
+| **AGENT LAMBDA** | `shadow-worktree-lambda` | Koyeb (`koyeb.yaml`), Vercel, Docker, Postgres | Cloud Deployment, Serverless, Docker & Isolated DB [cite: 135, 324]. |
 | **AGENT THETA** | `shadow-worktree-theta` | ngrok, Cloudflare Tunnel, Reverse Proxy | HTTPS Public Tunneling lokal tanpa Kartu Kredit [cite: 177]. |
 | **AGENT OMEGA** | `shadow-worktree-omega` | Master CLI QC, gVisor, Tirith, AI Security | 18 Unit Tests 100% Passed & Security Governance [cite: 1]. |
 
@@ -170,8 +170,8 @@ invoke_subagent(
 invoke_subagent(
     id="AGENT_LAMBDA",
     workspace="/workspace/scratch/shadow-worktree-lambda",
-    tools=["RENDER_IAC", "VERCEL", "DOCKER", "POSTGRESQL", "FIREBASE"],
-    task="Verifikasi render.yaml Blueprint, Dockerfile, Vercel config, dan PostgreSQL ipAllowList: []."
+    tools=["KOYEB_IAC", "VERCEL", "DOCKER", "POSTGRESQL", "FIREBASE"],
+    task="Verifikasi koyeb.yaml Blueprint, Dockerfile.telegram, Vercel config, dan PostgreSQL ipAllowList: []."
 )
 
 invoke_subagent(

@@ -135,7 +135,7 @@ def get_architecture_context() -> str:
         "- 9Router AI Gateway: http://localhost:20128/v1\n"
         "- FastAPI Web Server: http://127.0.0.1:8080\n"
         "- Gmail Watcher: IMAP/SMTP SSL Daemon\n"
-        "- Cloud Architecture: Sovereign Container / Local Daemon (Render Purged)\n"
+        "- Cloud Architecture: Koyeb Cloud 24/7 (Singapore) & Sovereign Container\n"
         "- Git Repository: ptsaudagar-oss/02-apps-bot"
     )
 

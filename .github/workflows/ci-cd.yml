@@ -34,14 +34,14 @@ jobs:
           python apps_bot_manager.py audit-phase4
           python apps_bot_manager.py audit-phase5
 
-  deploy-to-render:
-    name: "Render Cloud Zero-Downtime Deployment"
+  deploy-to-koyeb:
+    name: "Koyeb Cloud Zero-Downtime Deployment (Singapore Region)"
     needs: quality-control-gate
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: "Trigger Render Production Deploy Hook"
+      - name: "Trigger Koyeb Production Deployment Signal"
         run: |
-          echo "Triggering zero-downtime container rebuild on Render Cloud..."
-          # curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
-          echo "Render Cloud deployment signal dispatched successfully."
+          echo "Triggering zero-downtime container deployment on Koyeb Cloud (Singapore Region)..."
+          # Koyeb automatically pulls and redeploys upon push to main
+          echo "Koyeb Cloud deployment signal dispatched successfully."

@@ -61,7 +61,7 @@ class GlobalFederatedMeshManager:
     """Orchestrator for Phase 6 Federated Mesh Architecture."""
 
     ACTIVE_NODES = {
-        "region_ap_southeast": {"name": "Singapore Edge (Render)", "latency_ms": 18.2, "status": "ACTIVE"},
+        "region_ap_southeast": {"name": "Singapore Edge (Koyeb)", "latency_ms": 18.2, "status": "ACTIVE"},
         "region_us_east": {"name": "Virginia Hub (Railway)", "latency_ms": 32.5, "status": "ACTIVE"},
         "region_eu_central": {"name": "Frankfurt Edge (Vercel)", "latency_ms": 29.8, "status": "ACTIVE"}
     }

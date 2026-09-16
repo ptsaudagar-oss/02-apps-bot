@@ -11,8 +11,8 @@
 - **Gmail Watcher**: Daemon `00-G-MAIL_BOT` polling inbox every 60s via IMAP/SMTP SSL.
 
 ### 2. CLOUD DEPLOYMENT & DATABASE STATE
-- **Render Cloud IaC**: `render.yaml` manifest specifying 4 services (`enterprise-n8n-middleware`, `hermes-agent-engine`, `nine-router-proxy`, `bot-db-cluster`).
-- **PostgreSQL Database**: Render Managed Postgres with `ipAllowList: []` (strict private network isolation via internal DNS).
+- **Koyeb Cloud 24/7 Deployment**: `koyeb.yaml` & `Dockerfile.telegram` targeting Singapore Region (`sin`) with zero paywall.
+- **PostgreSQL Database**: Sovereign Managed Postgres with `ipAllowList: []` (strict private network isolation via internal DNS).
 - **Git Repository**: `ptsaudagar-oss/02-apps-bot` on `main` branch.
 
 ### 3. MCP TOOL GATEWAYS & SECURITY CREDENTIALS
@@ -36,11 +36,11 @@
 ### 6. PHASE 4 CONTINUOUS EVOLUTION & SELF-HEALING
 - **Skill Creation Loop**: `core/skill_evolver.py` (Synthesizes 5+ turn workflows into `agentskills.io` standard `SKILL.md`).
 - **Self-Healing Manager**: `core/self_healing.py` (Zero-downtime Dual Dispatcher failover & 9Router 3-tier cascade <50ms).
-- **IaC Validator**: `core/iac_validator.py` (`render.yaml` 4 services + disk mounts + Postgres `ipAllowList: []`).
+- **IaC Validator**: `core/iac_validator.py` (`koyeb.yaml` & Dockerfile.telegram blueprint validation).
 - **Audit Command**: `python apps_bot_manager.py audit-phase4` (Live 4-Pillar JSON Telemetry).
 
 ### 7. PHASE 5 SOVEREIGN ENTERPRISE SCALE (v3.0-SOVEREIGN)
-- **GitOps CI/CD**: `.github/workflows/ci-cd.yml` (Automated staging gates & Render deploy hooks).
+- **GitOps CI/CD**: `.github/workflows/ci-cd.yml` (Automated staging gates & Koyeb deploy hooks).
 - **Multi-Tenant Fleet**: `core/multi_tenant.py` (0% data bleed between B2B `pt.saudagar` & Retail `8m.shop`).
 - **Executive ROI Engine**: `core/roi_engine.py` (82ms avg latency, 40% token cost savings, weekly briefs).
 - **Audit Command**: `python apps_bot_manager.py audit-phase5` (Full Sovereign JSON Telemetry).

@@ -20,7 +20,7 @@
 - **AI Routing**: Enforce 9Router AI Gateway (`http://localhost:20128/v1`) with RTK Token Saver (-40% token compression) and 3-Tier Fallback Resilience.
 - **Middleware**: Control n8n Engine (<150ms ACK) and Python FastAPI Server (port 8080) with Dual Dispatcher Failover Policy (Meta Cloud API -> Local Bridge port 3000 -> Log Audit).
 - **Messaging Channels**: Telegram Bot API (Inline Keyboards, Forum Topics, Mini Apps `/apps`) and Gmail IMAP/SMTP SSL Watcher.
-- **Cloud Infrastructure**: Render Cloud IaC (`render.yaml`) with Managed PostgreSQL (`ipAllowList: []`) and ngrok/Cloudflare Tunnel fallback.
+- **Cloud Infrastructure**: Koyeb Cloud Deployment (`koyeb.yaml` / Singapore `sin`) with Sovereign PostgreSQL (`ipAllowList: []`) and ngrok/Cloudflare Tunnel fallback.
 
 # 4. SECURITY & GOVERNANCE BOUNDARIES
 - **Zero Plain-Text Credentials**: All OAuth 2.0/2.1 tokens, App Passwords, and API Keys must be managed via Composio MCP Gateway or encrypted environment variables (`.env`).

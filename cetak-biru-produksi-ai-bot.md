@@ -15,7 +15,7 @@ Sistem bot AI otonom multisaluran ini bekerja layaknya sebuah **Restoran Modern 
 * **Head Chef / Koki Utama (Hermes Agent & AI Engine)**: Otak dapur otonom yang mengingat profil pelanggan (*Long-Term Store* `MEMORY.md`), instruksi saat ini (*Short-Term Window*), serta meracik resep kerja baru secara otomatis (*Procedural Skill Memory* `SKILL.md`).
 * **Pemasok Bahan & Penawar Harga (9Router AI Gateway)**: Manajer logistik yang menyediakan model AI, menghemat konsumsi token (RTK Token Saver 20%–40%), serta mengatur alur 3 pemasok cadangan (*3-Tier Fallback*) agar dapur tidak kehabisan bahan.
 * **Kurir Pengantar Pesanan (Dual Dispatcher & Failover)**: Sistem pengiriman yang mencoba kurir resmi (Meta Cloud API) terlebih dahulu; jika kurir utama halangan/mogok, otomatis dialihkan ke kurir cadangan (*Local Gateway Bridge*) tanpa membuat restoran *crash*.
-* **Gedung & Fasilitas Dapur (Render Cloud Infrastructure)**: Bangunan fisik terisolasi bersertifikat SSL dengan ruang penyimpanan dingin persisten (*Persistent Disk*).
+* **Gedung & Fasilitas Dapur (Koyeb Cloud Infrastructure)**: Bangunan fisik terisolasi di Singapore (`sin`) bersertifikat SSL dengan proses aktif 24/7 tanpa paywall kartu kredit.
 * **Inspektur Mutu / Manager (Master CLI `apps_bot_manager.py`)**: Alat kendali pusat untuk memeriksa kesehatan dapur dan menjalankan pengujian otomatis (*Antigravity QC Protocol*) hingga 100% Lolos.
 
 ---
@@ -39,7 +39,7 @@ Sistem bot AI otonom multisaluran ini bekerja layaknya sebuah **Restoran Modern 
 │     └── App Password Gmail, Token BotFather, Meta WABA Token           │
 │                                                                        │
 │  [FASE 5] Deployment Cloud & Pemeliharaan (24/7)                       │
-│     └── render.yaml di Render Cloud + Rotasi Log 10MB                  │
+│     └── koyeb.yaml / Dockerfile di Koyeb Cloud (Singapore)             │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -82,14 +82,13 @@ Setelah mode simulasi 100% lolos uji, ganti kredensial simulasi di file `.env` d
 2. **Gmail Bot (Google App Password)**: Buat *App Password* 16 karakter di `myaccount.google.com/apppasswords` untuk koneksi IMAP/SMTP SSL yang aman dan bebas kadaluarsa.
 3. **WhatsApp Cloud API**: Ambil *Phone Number ID*, *WABA ID*, dan *System User Token* dari Meta for Developers Console.
 
-### 📌 FASE 5: Cloud Deployment & Pemeliharaan Production (24/7 di Render Platform)
-Agar bot beroperasi 24 jam nonstop tanpa mengandalkan laptop, lakukan *deployment* ke Render Cloud dalam jaringan privat terisolasi:
-1. **Manifest IaC (`render.yaml`)**: Konfigurasikan 3 layanan di `render.yaml`:
-   * **n8n Web Service**: Meng-host webhook publik HTTPS dengan *Persistent Disk* `/home/node/.n8n`.
-   * **Hermes Agent Worker Daemon**: Meng-host penalaran AI otonom di latar belakang dengan *Persistent Disk* `/app/hermes/data`.
-   * **9Router Private Service**: Proxy AI privat internal pada port 20128.
-   * **Managed PostgreSQL**: Database privat dengan `ipAllowList: []` agar menolak seluruh akses luar langsung.
-2. **Push ke GitHub & Deploy**: Hubungkan repositori GitHub Anda ke Render Blueprint untuk otomatisasi *build* & *deploy*.
+### 📌 FASE 5: Cloud Deployment & Pemeliharaan Production (24/7 di Koyeb Platform)
+Agar bot beroperasi 24 jam nonstop tanpa mengandalkan laptop, lakukan *deployment* ke Koyeb Cloud (Region Singapore) secara gratis tanpa kartu kredit:
+1. **Manifest Blueprint (`koyeb.yaml`)**: Konfigurasikan layanan di `koyeb.yaml` atau Dockerfile:
+   * **Telegram Gmail Bot Web Service**: Meng-host webhook publik HTTPS dan long-polling bot dengan HTTP Health Check di port 8000 (`/health`).
+   * **Hermes & Ingestion Worker**: Meng-host penalaran AI otonom di latar belakang.
+   * **9Router AI Gateway**: Proxy AI privat dengan RTK token compression.
+2. **Push ke GitHub & Deploy**: Hubungkan repositori GitHub Anda ke Koyeb App untuk otomatisasi *build* & *deploy* bebas repot.
 3. **Pemeliharaan Harian**:
    * **Rotasi Log**: File `logs/apps_bot.log` otomatis berotasi saat mencapai 10MB sehingga ruang penyimpanan tidak pernah penuh.
    * **Skill Extension**: Jika ada alur bisnis baru, buat file `SKILL.md` baru untuk Hermes Agent tanpa mengubah fondasi kode.
@@ -132,7 +131,7 @@ AI Agentic (Hermes Agent / Gemini 3.6 Flash) mengolah pesan masuk menjadi **JSON
 | **Fase 2: Local Setup** | Pasang runtime & AI Gateway lokal | Node 20+, Python 3.10+, 9router | Gateway aktif di `localhost:20128` | Menata mesin bubut & meja kerja di dapur |
 | **Fase 3: QC & Testing** | Uji otomatis suite 17 unit tests | `python apps_bot_manager.py test` | **100% PASSED (Code 0)** | Penguji QC mencicipi & meloloskan seluruh resep |
 | **Fase 4: Live Credentials** | Isi token asli Telegram, Gmail, & WA | BotFather, App Password, Meta Console | File `.env` terisi token produksi aman | Membuka pintu gerbang untuk pelanggan asli |
-| **Fase 5: Production Deploy** | Deploy cloud 24/7 di jaringan privat | Render Cloud & `render.yaml` | Bot beroperasi 24/7 tanpa *downtime* | Restoran cabang cloud resmi buka 24 jam |
+| **Fase 5: Production Deploy** | Deploy cloud 24/7 di jaringan privat | Koyeb Cloud & `koyeb.yaml` | Bot beroperasi 24/7 tanpa *downtime* | Restoran cabang cloud resmi buka 24 jam |
 
 ---
 
