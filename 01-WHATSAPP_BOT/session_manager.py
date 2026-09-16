@@ -59,5 +59,14 @@ class SessionManager:
         """Clears all sessions (useful for tests)."""
         self._sessions.clear()
 
+    def purge_all_simulated_sessions(self) -> int:
+        """
+        Purges mock/dummy/test sessions (Task 2.1 Data Purge Protocol).
+        Returns number of wiped sessions.
+        """
+        count = len(self._sessions)
+        self._sessions.clear()
+        return count
+
 
 session_manager = SessionManager()

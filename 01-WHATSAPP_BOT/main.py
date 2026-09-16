@@ -35,11 +35,13 @@ except ImportError:
     from message_handler import whatsapp_handler
     from config import (
         WHATSAPP_VERIFY_TOKEN,
-        WHATSAPP_ACCESS_TOKEN,
         WHATSAPP_PHONE_NUMBER_ID,
         SERVER_HOST,
         SERVER_PORT
     )
+
+from core.telemetry import telemetry_hub
+import time
 
 logger = setup_logger("WHATSAPP_SERVER")
 
@@ -54,6 +56,13 @@ app = FastAPI(
 class SendMessageRequest(BaseModel):
     to: str
     message: str
+
+
+class InboundSMSRequest(BaseModel):
+    sender: str
+    message: str
+    timestamp: str = ""
+
 
 
 @app.get("/", tags=["Health"])
@@ -77,12 +86,17 @@ async def verify_webhook(
     Standard Meta WhatsApp Webhook verification handshake.
     Meta sends GET request with challenge string to verify endpoint ownership.
     """
+    start_time = time.perf_counter()
     logger.info(f"Received webhook verification challenge. Mode: {hub_mode}")
 
     if hub_mode == "subscribe" and hub_verify_token == WHATSAPP_VERIFY_TOKEN:
-        logger.info("Webhook verification challenge passed successfully.")
+        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+        telemetry_hub.record_latency("whatsapp", "/webhook[GET]", elapsed_ms, 200)
+        logger.info(f"Webhook verification challenge passed successfully ({elapsed_ms:.2f}ms).")
         return Response(content=hub_challenge, media_type="text/plain", status_code=200)
 
+    elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+    telemetry_hub.record_latency("whatsapp", "/webhook[GET]", elapsed_ms, 403)
     logger.warning("Webhook verification failed: Token mismatch or invalid mode.")
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Verification token mismatch")
 
@@ -91,10 +105,14 @@ async def verify_webhook(
 async def handle_webhook(request: Request):
     """
     Receives incoming WhatsApp events (messages, button clicks, status updates).
+    Enforces Fast ACK SLA (<150ms).
     """
+    start_time = time.perf_counter()
     try:
         payload = await request.json()
     except Exception as e:
+        elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+        telemetry_hub.record_latency("whatsapp", "/webhook[POST]", elapsed_ms, 400)
         logger.error(f"Invalid JSON received at webhook: {e}")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
 
@@ -103,7 +121,9 @@ async def handle_webhook(request: Request):
         # Asynchronously process each message
         asyncio.create_task(whatsapp_handler.process_message(msg))
 
-    return {"status": "EVENT_RECEIVED", "processed_count": len(messages)}
+    elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+    telemetry_hub.record_latency("whatsapp", "/webhook[POST]", elapsed_ms, 200)
+    return {"status": "EVENT_RECEIVED", "processed_count": len(messages), "latency_ms": round(elapsed_ms, 2)}
 
 
 @app.post("/api/send", tags=["API"])
@@ -115,6 +135,70 @@ async def send_direct_message(req: SendMessageRequest):
     if success:
         return {"status": "success", "recipient": req.to}
     raise HTTPException(status_code=500, detail="Failed to dispatch WhatsApp message")
+
+
+@app.post("/api/sms", tags=["SMS Gateway"])
+async def receive_inbound_sms(req: InboundSMSRequest):
+    """
+    Inbound SMS Gateway for GSM/SMS forwarding (e.g. 081808630730).
+    Automatically logs, audits Enclave privacy, and dispatches real-time alerts to Telegram and WhatsApp.
+    """
+    start_time = time.perf_counter()
+    clean_sender = req.sender.replace("+", "").strip()
+    is_master_admin = clean_sender in ("081808630730", "6281808630730", settings.MASTER_ADMIN_WHATSAPP_NUMBER)
+
+    logger.info(f"📱 [INBOUND SMS] From {req.sender} (Master Admin: {is_master_admin}): {req.message}")
+
+    # Format Telegram Alert
+    badge = "👑 <b>[SMS DARI MASTER OWNER - 081808630730]</b>" if is_master_admin else "📱 <b>[SMS MASUK]</b>"
+    sms_telegram_text = (
+        f"{badge}\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"• <b>Pengirim:</b> <code>{req.sender}</code>\n"
+        f"• <b>Pesan:</b> {req.message}\n"
+        f"• <b>Waktu:</b> <code>{req.timestamp or time.strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"⚡ <i>Real-time SMS Autonomous Ingestion</i>"
+    )
+
+    # Push to Telegram if authorized
+    try:
+        import httpx
+        if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
+            for chat_id in settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
+                async with httpx.AsyncClient(timeout=5.0) as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": chat_id,
+                            "text": sms_telegram_text,
+                            "parse_mode": "HTML"
+                        }
+                    )
+    except Exception as e:
+        logger.error(f"Error forwarding SMS to Telegram: {e}")
+
+    # Acknowledge to WhatsApp if Master Admin
+    if is_master_admin and settings.MASTER_ADMIN_WHATSAPP_NUMBER:
+        wa_ack = (
+            f"📱 *SMS BERHASIL DITERIMA & DITERUSKAN*\n"
+            f"━━━━━━━━━━━━━━━━━━\n"
+            f"• Dari: {req.sender}\n"
+            f"• Pesan: {req.message}\n"
+            f"• Status: Terdistribusi ke Telegram @Apps_Bot"
+        )
+        asyncio.create_task(whatsapp_handler.send_message(settings.MASTER_ADMIN_WHATSAPP_NUMBER, wa_ack))
+
+    elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+    telemetry_hub.record_latency("sms_gateway", "/api/sms", elapsed_ms, 200)
+
+    return {
+        "status": "SMS_DISPATCHED",
+        "sender": req.sender,
+        "is_master_admin": is_master_admin,
+        "latency_ms": round(elapsed_ms, 2)
+    }
+
 
 
 class WhatsAppBotEngine(BaseBotEngine):

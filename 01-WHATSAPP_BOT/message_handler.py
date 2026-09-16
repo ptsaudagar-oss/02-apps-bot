@@ -1,13 +1,21 @@
 """
 Message Dispatcher and Payload Parser for WhatsApp Bot.
 Processes Meta WhatsApp Cloud API webhooks, handles conversational routing, and sends responses.
+
+Context Injection Sources:
+  - SOUL.md §1: Bot Identity → greeting menu
+  - MEMORY.md §1: Architecture → status command
+  - USER.md §2: Communication Style → AI response tone
 """
 
 import httpx
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, List, Tuple
 from core.config import settings
 from core.logger import setup_logger
 from core.ai_helper import ai_helper
+from core import context_loader
+from core.privacy_enclave import privacy_enclave
+from core.telemetry import telemetry_hub
 
 try:
     from .session_manager import session_manager, UserSession
@@ -21,7 +29,7 @@ try:
         WHATSAPP_FAILOVER_TO_LOCAL
     )
 except ImportError:
-    from session_manager import session_manager, UserSession
+    from session_manager import session_manager
     from config import (
         WHATSAPP_ACCESS_TOKEN,
         WHATSAPP_PHONE_NUMBER_ID,
@@ -46,6 +54,8 @@ class WhatsAppMessageHandler:
         self.local_gateway_url = WHATSAPP_LOCAL_GATEWAY_URL
         self.failover_to_local = WHATSAPP_FAILOVER_TO_LOCAL
         self.client = httpx.AsyncClient(timeout=25.0)
+        # Pre-load bot identity from SOUL.md + USER.md
+        self._identity = context_loader.get_bot_identity()
 
     def is_configured(self) -> bool:
         """Checks if either Meta or Local Gateway is configured."""
@@ -119,10 +129,13 @@ class WhatsAppMessageHandler:
         sender = message["sender"]
         sender_name = message.get("sender_name", "User")
         body = message["body"]
-        clean_text = body.lower().strip()
 
         session = session_manager.get_or_create_session(sender)
-        session.add_message("user", body)
+
+        # Apply Privacy Enclave PII Redaction on incoming text
+        sanitized_body = privacy_enclave.redact_pii(body) if settings.ENCLAVE_PII_REDACTION else body
+        session.add_message("user", sanitized_body)
+        clean_text = sanitized_body.lower().strip()
 
         logger.info(f"Incoming WhatsApp message from {sender} ({sender_name}): '{body}'")
 
@@ -130,7 +143,9 @@ class WhatsAppMessageHandler:
         if any(w in clean_text for w in ("halo", "hai", "hi", "menu", "start", "help")):
             reply = (
                 f"👋 *Halo, {sender_name}!*\n"
-                f"Selamat datang di layanan *APPS_BOT WhatsApp Assistant* 🤖📱\n\n"
+                f"Selamat datang di layanan *{self._identity['name']}* 🤖📱\n"
+                f"_{self._identity['role']}_\n"
+                f"_Powered by {self._identity['organization']}_\n\n"
                 f"📌 *Pilihan Layanan Cepat:*\n"
                 f"1️⃣ *Info Sistem* - Ketik *status*\n"
                 f"2️⃣ *Email Terpadu* - Ketik *email*\n"
@@ -141,7 +156,11 @@ class WhatsAppMessageHandler:
 
         elif clean_text == "status":
             reply = (
-                f"📊 *Status Layanan WhatsApp Bot*\n"
+                f"📊 *Status Layanan {self._identity['name']}*\n"
+                f"━━━━━━━━━━━━━━━━━━━\n"
+                f"• *Identitas:* {self._identity['name']}\n"
+                f"• *Organisasi:* {self._identity['organization']}\n"
+                f"• *Metodologi:* {self._identity['methodology']}\n"
                 f"━━━━━━━━━━━━━━━━━━━\n"
                 f"• *Server Status:* ONLINE ✅\n"
                 f"• *Kredensial API:* {'META CLOUD API' if self.is_configured() else 'SIMULASI LOKAL'}\n"
@@ -153,7 +172,7 @@ class WhatsAppMessageHandler:
         elif any(w in clean_text for w in ("email", "cek email", "inbox", "gmail")):
             reply = (
                 f"📬 *Integrasi Gmail APPS_BOT*\n"
-                f"Sistem bot email terhubung dengan modul *00-TELEGRAM_BOT/00-G-MAIL_BOT*.\n\n"
+                f"Sistem bot email terhubung dengan modul *02-TELEGRAM_BOT/00-GMAIL_BOT*.\n\n"
                 f"Ketik */unread* di bot Telegram Anda atau akses menu terpusat via `apps_bot_manager.py`."
             )
 
@@ -230,6 +249,7 @@ class WhatsAppMessageHandler:
         if self.is_meta_configured():
             success, info = await self._send_via_meta(clean_phone, text)
             if success:
+                telemetry_hub.record_dispatch("meta", is_failover=False)
                 return True
 
             if self.failover_to_local:
@@ -247,9 +267,11 @@ class WhatsAppMessageHandler:
         if self.failover_to_local and self.local_gateway_url:
             success_local, info_local = await self._send_via_local_gateway(clean_phone, text)
             if success_local:
+                telemetry_hub.record_dispatch("local_bridge", is_failover=True)
                 return True
 
         # 3. Fail-safe Simulation / Mock Mode jika kedua jalur belum aktif / offline
+        telemetry_hub.record_dispatch("simulation", is_failover=False)
         logger.info(f"[SIMULASI WHATSAPP - FALLBACK AMAN] Ke: +{clean_phone} ->\n{text}")
         return True
 

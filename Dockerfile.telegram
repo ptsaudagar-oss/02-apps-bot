@@ -1,0 +1,35 @@
+# 🐳 Dockerfile for 02-TELEGRAM_BOT (Gmail & Telegram 24/7 Cloud Engine)
+FROM python:3.11-slim
+
+LABEL maintainer="PT. Saudagar <pt.saudagar@gmail.com>"
+LABEL service="telegram-gmail-bot"
+LABEL description="Autonomous 24/7 Telegram Gmail Assistant for Render.com"
+
+WORKDIR /app
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app \
+    PORT=10000
+
+# Install minimal dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install python dependencies
+COPY requirements.txt /app/requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy application source
+COPY . /app
+
+# Expose default cloud port
+EXPOSE 10000
+
+# Health check probe
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-10000}/ || exit 1
+
+# Start standalone Telegram Gmail Bot
+CMD ["python", "02-TELEGRAM_BOT/00-GMAIL_BOT/main.py"]

@@ -1,6 +1,13 @@
 # 🐳 Dockerfile for APPS_BOT & Hermes Agent Engine
 FROM python:3.11-slim
 
+# Metadata labels (Source: USER.md §1 + SOUL.md §1)
+LABEL maintainer="Kafnun Asep Nurhuda Al-Hakim <pt.saudagar@gmail.com>"
+LABEL project="APPS_BOT - Antigravity Assistant Production Manager (APM)"
+LABEL organization="PT. Saudagar"
+LABEL architecture="Multi-Channel Bot Ecosystem (Gmail x Telegram x WhatsApp)"
+LABEL version="1.0.0"
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \

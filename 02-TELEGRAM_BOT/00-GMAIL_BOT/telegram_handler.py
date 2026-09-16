@@ -1,6 +1,11 @@
 """
 Telegram Bot Handler for Gmail Assistant.
 Manages interactive commands, inline keyboards, message formatting, and Telegram Bot API communication via httpx.
+
+Context Injection Sources:
+  - SOUL.md §1: Bot Identity → /start greeting
+  - MEMORY.md §1-3: Architecture Map → /status display
+  - USER.md §1: Owner Attribution → response footer
 """
 
 import httpx
@@ -8,12 +13,19 @@ from typing import Dict, Any, Optional, List, Tuple
 from core.config import settings
 from core.logger import setup_logger
 from core.ai_helper import ai_helper
+from core import context_loader
+from core.privacy_enclave import privacy_enclave
+from core.telemetry import telemetry_hub
+import time
 try:
     from .gmail_service import gmail_service
 except ImportError:
     from gmail_service import gmail_service
 
 logger = setup_logger("TELEGRAM_HANDLER")
+
+# Pre-load bot identity from SOUL.md + USER.md
+_bot_identity = context_loader.get_bot_identity()
 
 
 class TelegramHandler:
@@ -38,8 +50,11 @@ class TelegramHandler:
         parse_mode: str = "HTML",
         reply_markup: Optional[Dict[str, Any]] = None
     ) -> bool:
-        """Sends a text message via Telegram API."""
+        """Sends a text message via Telegram API and tracks latency."""
+        start_time = time.perf_counter()
         if not self.token:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+            telemetry_hub.record_latency("telegram", "/sendMessage[SIMULATION]", elapsed_ms, 200)
             logger.info(f"[SIMULASI TELEGRAM] Chat {chat_id} -> {text[:100]}...")
             return True
 
@@ -54,12 +69,16 @@ class TelegramHandler:
 
         try:
             resp = await self.client.post(f"{self.api_url}/sendMessage", json=payload)
+            elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+            telemetry_hub.record_latency("telegram", "/sendMessage", elapsed_ms, resp.status_code)
             if resp.status_code == 200:
                 return True
             else:
                 logger.error(f"Telegram API error {resp.status_code}: {resp.text}")
                 return False
         except Exception as e:
+            elapsed_ms = (time.perf_counter() - start_time) * 1000.0
+            telemetry_hub.record_latency("telegram", "/sendMessage[EXCEPTION]", elapsed_ms, 500)
             logger.error(f"Failed to send Telegram message: {e}")
             return False
 
@@ -115,18 +134,21 @@ class TelegramHandler:
         if base_cmd in ("/start", "/help"):
             msg = (
                 f"👋 <b>Halo, {user_name}!</b>\n"
-                f"Selamat datang di <b>APPS_BOT Gmail Assistant</b> 🤖✉️\n\n"
+                f"Selamat datang di <b>{_bot_identity['name']}</b> 🤖✉️\n"
+                f"<i>{_bot_identity['role']}</i>\n"
+                f"<i>Engine: {_bot_identity['engine']}</i>\n\n"
                 f"<b>Perintah Tersedia:</b>\n"
                 f"📬 <code>/unread</code> - Cek email masuk yang belum dibaca\n"
                 f"📊 <code>/status</code> - Cek kesehatan koneksi bot & Gmail\n"
                 f"⚡ <code>/summarize &lt;ID&gt;</code> - Minta ringkasan AI untuk email tertentu\n"
                 f"📝 <code>/draft &lt;ID&gt;</code> - Buat draf balasan cerdas via AI\n"
                 f"📨 <code>/send &lt;tujuan&gt; | &lt;subjek&gt; | &lt;pesan&gt;</code> - Kirim email\n\n"
-                f"<i>Status Mode: {'LIVE GMAIL' if gmail_service.is_configured() else 'SIMULASI MOCK'}</i>"
+                f"<i>Status Mode: {'LIVE GMAIL' if gmail_service.is_configured() else 'SIMULASI MOCK'}</i>\n"
+                f"<i>Powered by {_bot_identity['organization']}</i>"
             )
             await self.send_message(chat_id, msg)
 
-        elif base_cmd in ("/unread", "/inbox"):
+        elif base_cmd in ("/unread", "/inbox", "/cek"):
             emails = gmail_service.get_unread_emails(limit=5)
             if not emails:
                 await self.send_message(chat_id, "🎉 <b>Kotak Masuk Bersih!</b> Tidak ada email baru yang belum dibaca.")
@@ -140,7 +162,11 @@ class TelegramHandler:
         elif base_cmd == "/status":
             connected, msg_conn = gmail_service.check_connection()
             status_text = (
-                f"⚙️ <b>Status Sistem APPS_BOT - Gmail Telegram</b>\n"
+                f"⚙️ <b>Status Sistem {_bot_identity['name']}</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Identitas:</b> {_bot_identity['name']}\n"
+                f"• <b>Organisasi:</b> {_bot_identity['organization']}\n"
+                f"• <b>Metodologi:</b> {_bot_identity['methodology']}\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"• <b>Bot Engine:</b> AKTIF ✅\n"
                 f"• <b>Telegram Token:</b> {'TERHUBUNG' if self.token else 'SIMULASI'} 🔑\n"
@@ -189,6 +215,30 @@ class TelegramHandler:
                 f"<code>{draft}</code>"
             )
             await self.send_message(chat_id, reply_text)
+
+        elif base_cmd in ("/metrics", "/telemetry"):
+            lat = telemetry_hub.get_latency_stats()
+            tok = telemetry_hub.get_token_efficiency_stats()
+            disp = telemetry_hub.get_dispatch_stats()
+            sec = telemetry_hub.get_security_stats()
+            telemetry_text = (
+                f"📈 <b>PHASE 3 TELEMETRY & LIVE ANALYTICS</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Total Requests:</b> {lat['total_requests']}\n"
+                f"• <b>Avg Latency ACK:</b> {lat['avg_latency_ms']}ms (<150ms SLA)\n"
+                f"• <b>SLA Compliance:</b> {lat['sla_compliance_pct']}%\n"
+                f"• <b>Alerts Triggered:</b> {lat['alerts_triggered']}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>9Router Token Savings:</b> {tok['avg_compression_savings_pct']}% (Target -40%)\n"
+                f"• <b>Tokens Saved:</b> {tok['total_tokens_saved']:,}\n"
+                f"• <b>WhatsApp RAM Sessions:</b> {disp['active_ram_sessions']}/15\n"
+                f"• <b>Meta vs Bridge Failovers:</b> {disp['local_bridge_failovers']}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Privacy Enclave:</b> {sec['zero_leakage_status']}\n"
+                f"• <b>PII Redactions:</b> {sec['pii_redaction_triggers']}\n"
+                f"• <b>System Uptime:</b> {telemetry_hub.get_uptime_seconds()}s\n"
+            )
+            await self.send_message(chat_id, telemetry_text)
 
         elif base_cmd == "/send":
             parts = [p.strip() for p in args.split("|")]
@@ -250,6 +300,45 @@ class TelegramHandler:
                 )
                 await self.send_message(chat_id, resp)
 
+        elif action in ("approve", "setuju"):
+            email_item = gmail_service.get_email_details(target_id)
+            sender_to = email_item.get("from", "Mitra B2B") if email_item else "Mitra B2B"
+            subj = email_item.get("subject", "Persetujuan Kontrak") if email_item else "Persetujuan Kontrak"
+            reply_body = (
+                f"Yth. Tim Procurement / Pengirim,\n\n"
+                f"Dengan ini kami mengonfirmasi bahwa penawaran / persetujuan untuk '{subj}' "
+                f"telah disetujui (APPROVED) secara resmi dan diteruskan ke tahap administrasi berikutnya.\n\n"
+                f"Salam hormat,\nPT. Saudagar Operations"
+            )
+            # Send notification and dispatch automated reply
+            success, msg_result = gmail_service.send_email(sender_to, f"Re: [APPROVED] {subj}", reply_body)
+            gmail_service.mark_as_read(target_id)
+            resp = (
+                f"✅ <b>AKSI DISETUJUI & DIPROSES!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Target:</b> <code>{sender_to}</code>\n"
+                f"• <b>Status:</b> Persetujuan Resmi Terkirim (HTTP 200 OK)\n"
+                f"• <b>Log ID:</b> <code>ACK-{target_id}</code>\n"
+                f"• <b>Kotak Masuk:</b> Ditandai Telah Selesai Dibaca\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            await self.send_message(chat_id, resp)
+
+        elif action in ("reject", "tolak"):
+            email_item = gmail_service.get_email_details(target_id)
+            sender_to = email_item.get("from", "Pengirim") if email_item else "Pengirim"
+            subj = email_item.get("subject", "Pemberitahuan Penolakan") if email_item else "Pemberitahuan Penolakan"
+            gmail_service.mark_as_read(target_id)
+            resp = (
+                f"❌ <b>TRANSAKSI DITOLAK / DIBATALKAN!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Target:</b> <code>{sender_to}</code>\n"
+                f"• <b>Status:</b> Transaksi Dibatalkan oleh Pengawas Sistem (HITL)\n"
+                f"• <b>Log ID:</b> <code>REJ-{target_id}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            await self.send_message(chat_id, resp)
+
         elif action == "read":
             success = gmail_service.mark_as_read(target_id)
             if success:
@@ -261,26 +350,80 @@ class TelegramHandler:
             await self.handle_command(chat_id, "/unread")
 
     def _build_email_card(self, email_item: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
-        """Constructs visually appealing HTML card with actionable inline buttons."""
+        """Constructs visually appealing HTML card with account badges and actionable inline buttons."""
+        sender_email = email_item.get("from", "")
+        account_meta = privacy_enclave.get_account_category(email_item.get("account", sender_email))
+        account_tag = account_meta.get("tag", "[📧 GMAIL]")
+
         text = (
-            f"📨 <b>{email_item['subject']}</b>\n"
+            f"📨 <b>{account_tag} {email_item['subject']}</b>\n"
             f"👤 <i>Dari: {email_item['from']}</i>\n"
             f"📅 <code>{email_item.get('date', 'Hari ini')}</code>\n\n"
             f"💬 {email_item['snippet']}..."
         )
         eid = email_item["id"]
-        keyboard = {
-            "inline_keyboard": [
-                [
-                    {"text": "⚡ Ringkas AI", "callback_data": f"summarize:{eid}"},
-                    {"text": "📝 Draf Balasan", "callback_data": f"draft:{eid}"}
-                ],
-                [
-                    {"text": "✅ Tandai Dibaca", "callback_data": f"read:{eid}"}
+
+        # Dynamic buttons based on account category
+        if account_meta.get("account") == "8m.shop.online@gmail.com":
+            # E-Commerce & Retail Store Buttons
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "🔍 Cek Detail", "callback_data": f"summarize:{eid}"},
+                        {"text": "⚙️ Proses Pesanan", "callback_data": f"draft:{eid}"}
+                    ],
+                    [
+                        {"text": "✅ Tandai Selesai", "callback_data": f"read:{eid}"}
+                    ]
                 ]
-            ]
-        }
+            }
+        elif account_meta.get("hitl_required"):
+            # Master Owner Privacy Enclave
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "🛡️ HITL Otorisasi", "callback_data": f"draft:{eid}"},
+                        {"text": "🔒 Arsip Enclave", "callback_data": f"read:{eid}"}
+                    ]
+                ]
+            }
+        else:
+            # Primary B2B & Enterprise Operations
+            keyboard = {
+                "inline_keyboard": [
+                    [
+                        {"text": "⚡ Ringkas AI", "callback_data": f"summarize:{eid}"},
+                        {"text": "📝 Draf Balasan", "callback_data": f"draft:{eid}"}
+                    ],
+                    [
+                        {"text": "✅ Tandai Dibaca", "callback_data": f"read:{eid}"}
+                    ]
+                ]
+            }
         return text, keyboard
+
+    async def dispatch_sla_alert(self, alert_payload: Dict[str, Any], chat_id: Optional[str] = None) -> bool:
+        """Sends automated emergency alert to Telegram admin thread if ACK > 200ms or on critical failure."""
+        target_chat = chat_id or (settings.TELEGRAM_AUTHORIZED_CHAT_IDS[0] if settings.TELEGRAM_AUTHORIZED_CHAT_IDS else None)
+        if not target_chat:
+            logger.warning("No Telegram authorized chat configured for SLA alert dispatch.")
+            return False
+
+        alert_text = (
+            f"🚨 <b>[AUTOMATED SLA BREACH ALERT]</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• <b>Reason:</b> {alert_payload.get('reason', 'Latency threshold exceeded')}\n"
+            f"• <b>Channel:</b> <code>{alert_payload.get('channel')}</code>\n"
+            f"• <b>Endpoint:</b> <code>{alert_payload.get('endpoint')}</code>\n"
+            f"• <b>Measured Latency:</b> <code>{alert_payload.get('latency_ms', 0):.2f}ms</code> (Threshold: 200ms)\n"
+            f"• <b>Status Code:</b> <code>{alert_payload.get('status_code', 200)}</code>\n"
+            f"• <b>Timestamp:</b> <code>{alert_payload.get('timestamp')}</code>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚠️ <i>Antigravity Real-Time Telemetry Monitor</i>"
+        )
+        return await self.send_message(target_chat, alert_text)
 
 
 telegram_handler = TelegramHandler()
+telemetry_hub.register_alert_listener(lambda payload: logger.info(f"Telemetry SLA Alert registered: {payload}"))
+

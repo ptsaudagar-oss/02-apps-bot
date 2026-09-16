@@ -19,9 +19,9 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from core.config import settings
-from gmail_service import gmail_service, GmailService
-from telegram_handler import telegram_handler, TelegramHandler
-from main import bot_engine, TelegramGmailBotEngine
+from gmail_service import GmailService
+from telegram_handler import TelegramHandler
+from main import TelegramGmailBotEngine
 
 
 class TestGmailBotModule(unittest.TestCase):
@@ -65,8 +65,12 @@ class TestGmailBotModule(unittest.TestCase):
     def test_telegram_authorization(self):
         """Test chat ID whitelist logic."""
         handler = TelegramHandler(token="TEST_MOCK_TOKEN")
-        # With default empty authorized list, all allowed
-        self.assertTrue(handler.is_authorized("12345678"))
+        if settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
+            auth_id = settings.TELEGRAM_AUTHORIZED_CHAT_IDS[0]
+            self.assertTrue(handler.is_authorized(auth_id))
+            self.assertFalse(handler.is_authorized("unauthorized_random_chat_99999"))
+        else:
+            self.assertTrue(handler.is_authorized("12345678"))
 
     def test_telegram_commands_dispatch(self):
         """Test handling commands (/start, /unread, /status, /summarize)."""
@@ -110,6 +114,47 @@ class TestGmailBotModule(unittest.TestCase):
         self.assertIn("telegram_token_present", health)
         self.assertIn("gmail_connected", health)
         self.assertIn("engine_running", health)
+
+    def test_multi_account_and_enclave_cards(self):
+        """Verify dynamic buttons and tags for B2B, E-Commerce, and Privacy Enclave accounts."""
+        handler = TelegramHandler(token="")
+
+        # 1. B2B Account Card
+        b2b_item = {
+            "id": "201",
+            "subject": "Faktur B2B Pengadaan Server",
+            "from": "vendor@enterprise.com",
+            "account": "pt.saudagar@gmail.com",
+            "snippet": "Invoice terlampir...",
+        }
+        text_b2b, markup_b2b = handler._build_email_card(b2b_item)
+        self.assertIn("[🏢 B2B CORPORATE]", text_b2b)
+        self.assertEqual(markup_b2b["inline_keyboard"][0][0]["text"], "⚡ Ringkas AI")
+
+        # 2. E-Commerce Store Card
+        store_item = {
+            "id": "202",
+            "subject": "Pesanan Baru #8M-1029",
+            "from": "customer@marketplace.com",
+            "account": "8m.shop.online@gmail.com",
+            "snippet": "Pembayaran berhasil...",
+        }
+        text_store, markup_store = handler._build_email_card(store_item)
+        self.assertIn("[🛒 E-COMMERCE]", text_store)
+        self.assertEqual(markup_store["inline_keyboard"][0][0]["text"], "🔍 Cek Detail")
+        self.assertEqual(markup_store["inline_keyboard"][0][1]["text"], "⚙️ Proses Pesanan")
+
+        # 3. Master Owner Privacy Enclave Card
+        owner_item = {
+            "id": "203",
+            "subject": "Laporan Keuangan Rahasia",
+            "from": "kafnun84@gmail.com",
+            "account": "kafnun84@gmail.com",
+            "snippet": "Data sensitif...",
+        }
+        text_owner, markup_owner = handler._build_email_card(owner_item)
+        self.assertIn("[🔒 PRIVACY ENCLAVE]", text_owner)
+        self.assertEqual(markup_owner["inline_keyboard"][0][0]["text"], "🛡️ HITL Otorisasi")
 
 
 if __name__ == "__main__":

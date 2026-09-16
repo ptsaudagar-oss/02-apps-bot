@@ -23,3 +23,11 @@ client_secrets.json
 Thumbs.db
 .vscode/
 .idea/
+
+# Node.js & Baileys Session Cache
+node_modules/
+baileys_auth_info/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*

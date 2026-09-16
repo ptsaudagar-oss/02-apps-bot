@@ -123,7 +123,7 @@ class TestWhatsAppBotModule(unittest.TestCase):
             # Test status command
             msg["body"] = "status"
             reply_status = await whatsapp_handler.process_message(msg)
-            self.assertIn("Status Layanan WhatsApp Bot", reply_status)
+            self.assertIn("Status Layanan", reply_status)
 
             # Verify session history
             session = session_manager.get_or_create_session("628199988877")
@@ -163,12 +163,26 @@ class TestWhatsAppBotModule(unittest.TestCase):
         loop.run_until_complete(run_failover())
         loop.close()
 
+    def test_inbound_sms_endpoint(self):
+        """Test POST /api/sms parses and dispatches SMS from 081808630730."""
+        payload = {
+            "sender": "081808630730",
+            "message": "Transaksi token 987654 berhasil masuk rekening APPS_BOT.",
+            "timestamp": "2026-09-14 15:15:00"
+        }
+        resp = self.client.post("/api/sms", json=payload)
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "SMS_DISPATCHED")
+        self.assertTrue(data["is_master_admin"])
+
     def test_engine_health_check(self):
         """Test WhatsAppBotEngine health check metadata."""
         health = bot_engine.health_check()
         self.assertIn("verify_token_set", health)
         self.assertIn("port", health)
         self.assertIn("engine_running", health)
+
 
 
 if __name__ == "__main__":

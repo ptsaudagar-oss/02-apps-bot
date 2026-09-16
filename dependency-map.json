@@ -1,0 +1,44 @@
+{
+  "project": "02-APPS_BOT",
+  "version": "2.0.0",
+  "mode": "LIVE_PRODUCTION",
+  "architecture": "DAG_PARALLEL_ORCHESTRATION",
+  "agents": {
+    "AGENT_ALPHA": {
+      "role": "Master Lead Orchestrator & DAG Coordinator",
+      "status": "ACTIVE"
+    },
+    "AGENT_BETA": {
+      "role": "Hermes Cognitive Kernel & Tripartite Memory",
+      "status": "ACTIVE"
+    },
+    "AGENT_GAMMA": {
+      "role": "9Router AI Gateway Port 20128 & RTK Token Saver",
+      "status": "ACTIVE"
+    },
+    "AGENT_DELTA": {
+      "role": "n8n Workflow Engine & FastAPI Server Fast ACK",
+      "status": "ACTIVE"
+    },
+    "AGENT_EPSILON": {
+      "role": "WhatsApp Meta v21.0 & Telegram /apps Dispatcher",
+      "status": "ACTIVE"
+    },
+    "AGENT_FARAD": {
+      "role": "Composio MCP Gateway & Postman API Tools",
+      "status": "ACTIVE"
+    },
+    "AGENT_LAMBDA": {
+      "role": "Render Cloud IaC, Docker & Postgres Private DNS",
+      "status": "ACTIVE"
+    },
+    "AGENT_THETA": {
+      "role": "HTTPS Reverse Proxy Tunnel Local Port 8080/5678",
+      "status": "ACTIVE"
+    },
+    "AGENT_OMEGA": {
+      "role": "Master CLI QC Suite 100% OK & Privacy Enclave",
+      "status": "ACTIVE"
+    }
+  }
+}

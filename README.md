@@ -68,12 +68,17 @@ graph TD
 
 ---
 
-### Layer 2: Telegram Gmail Bot (`00-TELEGRAM_BOT/00-G-MAIL_BOT/`)
-* **Asynchronous Polling**: Ringan dan responsif via `httpx` tanpa dependensi binary C-extension yang rapuh.
-* **Proactive Push Inbox Watcher**: Memantau kotak masuk secara berkala (default 60s) dan otomatis mengirim notifikasi instan ke chat Telegram yang diizinkan saat ada email baru.
-* **Kartu Email Interaktif**: Menampilkan subjek, pengirim, cuplikan isi, serta tombol inline (`⚡ Ringkas AI`, `📝 Draf Balasan`, `✅ Tandai Dibaca`).
-* **Kirim Email Langsung**: Perintah `/send` memudahkan membalas atau membuat email baru langsung dari chat Telegram.
-* **Zero-Crash Simulation Mode**: Dapat diuji secara langsung tanpa token/kredensial asli menggunakan seed inbox mock.
+### Layer 2: Telegram Bot Ecosystem (`02-TELEGRAM_BOT/`)
+* **00-GMAIL_BOT**: Bot pemantau Gmail multi-account (`pt.saudagar`, `8m.shop.online`, `kafnun84` Enclave).
+  - **Asynchronous Polling**: Ringan dan responsif via `httpx` tanpa dependensi binary C-extension yang rapuh.
+  - **Proactive Push Inbox Watcher**: Memantau kotak masuk secara berkala (default 60s) dan otomatis mengirim notifikasi instan ke chat Telegram yang diizinkan saat ada email baru.
+  - **Kartu Email Interaktif**: Menampilkan subjek, pengirim, cuplikan isi, serta tombol inline (`⚡ Ringkas AI`, `📝 Draf Balasan`, `✅ Tandai Dibaca`).
+  - **Kirim Email Langsung**: Perintah `/send` memudahkan membalas atau membuat email baru langsung dari chat Telegram.
+  - **Zero-Crash Simulation Mode**: Dapat diuji secara langsung tanpa token/kredensial asli menggunakan seed inbox mock.
+* **01-AI_CHAT_BOT**: Modul scaffolding untuk AI Chat Bot interaktif.
+* **02-NEWS_BOT**: Modul scaffolding untuk bot Berita & Digest otomatis.
+* **03-REMOTE_TV_BOT**: Modul scaffolding untuk bot Remote Android TV Box via ADB.
+* **04-ROUTER_CTRL_BOT**: Modul scaffolding untuk bot Router/Mikrotik Network Ops.
 
 ---
 
@@ -161,9 +166,9 @@ Semua modul telah diuji dan divalidasi dengan hasil pengujian 100% OK:
 | Modul Pengujian | Lokasi File Uji | Jumlah Test | Status |
 | :--- | :--- | :---: | :---: |
 | **Core Framework** | `core/tests/test_core.py` | 4 Tests | ✅ **PASSED** |
-| **Telegram Gmail Bot** | `00-TELEGRAM_BOT/00-G-MAIL_BOT/tests/test_gmail_bot.py` | 6 Tests | ✅ **PASSED** |
-| **WhatsApp Bot** | `01-WHATSAPP_BOT/tests/test_whatsapp_bot.py` | 7 Tests | ✅ **PASSED** |
-| **Total Pengujian** | - | **17 Tests** | ✅ **100% LOLOS** |
+| **Telegram Gmail Bot** | `02-TELEGRAM_BOT/00-GMAIL_BOT/tests/test_gmail_bot.py` | 7 Tests | ✅ **PASSED** |
+| **WhatsApp Bot** | `01-WHATSAPP_BOT/tests/test_whatsapp_bot.py` | 9 Tests | ✅ **PASSED** |
+| **Total Pengujian** | - | **20 Tests** | ✅ **100% LOLOS** |
 
 ---
 
@@ -173,3 +178,45 @@ Semua modul telah diuji dan divalidasi dengan hasil pengujian 100% OK:
 2. **Pemulihan Koneksi IMAP**: `gmail_service.py` menggunakan timeout terstandar (15 detik) untuk mencegah proses menggantung (*hanging socket*).
 3. **Penyelarasan Model AI**: Model AI default diselaraskan ke `gemini-3.6-flash` untuk menjamin kompatibilitas jangka panjang.
 4. **Zero-Downtime Deployment**: Layanan WhatsApp berjalan di atas ASGI Uvicorn yang dapat diintegrasikan dengan reverse proxy Nginx / Cloudflare Tunnel / ngrok.
+
+---
+
+## 📄 Dokumen Konteks Ekosistem
+
+Ekosistem APPS_BOT mengandalkan 5 dokumen konteks sebagai sumber kebenaran (*source of truth*) yang dibaca oleh `core/context_loader.py` secara runtime:
+
+| Dokumen | Fungsi | Injeksi Ke |
+|:--|:--|:--|
+| **`SOUL.md`** | Persona, guardrails, dan core directives. Mendefinisikan identitas APM, F.O.R.G.E. methodology, dan Zero-Crash Policy. | AI system prompt, `/start` greeting, `@zero_crash` decorator |
+| **`MEMORY.md`** | Architecture map, endpoint aktif, cloud state, multi-account live state, dan MCP tool gateways. | `/status` command, CLI diagnostics, Render env vars |
+| **`USER.md` / `USER-v2.md`** | Profil pemilik, preferensi komunikasi, dan standar governance. | AI tone & style, response branding, Docker labels |
+| **`SKILL.md`** | Prosedur klasifikasi email 5 langkah (Sanitize → Classify → Score → Action → Validate). | `ai_helper.classify_email()` procedural workflow |
+| **`ANTIGRAVITY_PARALLEL_ORCHESTRATION-v2.md`** | Master System Directive untuk dekomposisi DAG, 9 Agent IDs (Alpha-Omega), Privacy Enclave, dan Git Shadow Worktrees. | `context_loader.get_orchestration()`, CLI `context`, multi-agent workflows |
+
+### Perintah Manajemen Produksi (CLI)
+```powershell
+# Jalankan pengujian menyeluruh (100% Quality Control Passed)
+python apps_bot_manager.py test
+
+# Cek status sistem, kredensial, dan 3 akun operasional
+python apps_bot_manager.py status
+
+# Jalankan protokol pembersihan data simulasi (Zero-Simulation Protocol)
+python apps_bot_manager.py purge
+
+# Inspeksi seluruh dokumen konteks aktif
+python apps_bot_manager.py context
+```
+
+---
+
+## 👤 Author & Attribution
+
+| Field | Detail |
+|:--|:--|
+| **Nama** | Kafnun Asep Nurhuda Al-Hakim |
+| **Organisasi** | PT. Saudagar (`pt.saudagar@gmail.com`) |
+| **Peran** | Software & Ecosystem Production Manager / System Architect |
+| **Framework** | Antigravity AI IDE 2.5.5 |
+| **Repositori** | [`ptsaudagar-oss/02-apps-bot`](https://github.com/ptsaudagar-oss/02-apps-bot) |
+
