@@ -6,10 +6,8 @@ const { proto, initAuthCreds } = require('@whiskeysockets/baileys');
  * Custom Firestore Authentication State Adapter for Baileys WhatsApp (Firebase Admin v13 Modular API)
  * Stores credentials and signal keys directly in Google Cloud Firestore.
  * 
- * Hierarchy:
- * Collection: `wa_sessions`
- * Document: `session_081808630730`
- * Subcollection: `keys` -> individual key documents
+ * Supports dynamic collection & document resolution:
+ * e.g., Collection: `wa_sessions` or `apps-bot`, Document: `session_081808630730` or custom doc ID.
  */
 
 const BufferJSON = {
@@ -78,7 +76,14 @@ function initFirestore() {
 
 async function useFirestoreAuthState(sessionId = 'session_081808630730', collectionName = 'wa_sessions') {
     const db = initFirestore();
-    const sessionDocRef = db.collection(collectionName).doc(sessionId);
+    
+    // Support path resolution: collection name and session document
+    const targetCol = process.env.WA_FIRESTORE_COLLECTION || collectionName;
+    const targetDoc = process.env.WA_FIRESTORE_DOC_ID || sessionId;
+
+    console.log(`[Firestore Auth] Memetakan sesi Baileys ke Firestore path: /${targetCol}/${targetDoc}`);
+
+    const sessionDocRef = db.collection(targetCol).doc(targetDoc);
     const keysColRef = sessionDocRef.collection('keys');
 
     const writeData = async (data, id) => {

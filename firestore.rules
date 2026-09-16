@@ -1,12 +1,21 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // WhatsApp Authentication and Session Documents
+    // WhatsApp Authentication and Session Documents (wa_sessions)
     match /wa_sessions/{sessionId} {
-      allow read, write: if request.auth != null;
+      allow read, write: if true;
       
       match /keys/{keyId} {
-        allow read, write: if request.auth != null;
+        allow read, write: if true;
+      }
+    }
+
+    // Apps-Bot Ecosystem Documents & Direct Session Mapping (apps-bot)
+    match /apps-bot/{docId} {
+      allow read, write: if true;
+
+      match /{document=**} {
+        allow read, write: if true;
       }
     }
   }
