@@ -43,7 +43,7 @@ function initFirestore() {
 
     const saBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64 || process.env.FIREBASE_SERVICE_ACCOUNT;
     const saPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
-    const projectId = process.env.FIREBASE_PROJECT_ID || 'laporan-investigasi-mwp-2026';
+    const projectId = process.env.FIREBASE_PROJECT_ID || 'apps-bot';
 
     let credential = null;
     if (saBase64) {
