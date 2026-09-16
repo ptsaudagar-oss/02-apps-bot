@@ -1,52 +1,92 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { useFirestoreAuthState } = require('./firestore_auth_state');
 const qrcode = require('qrcode-terminal');
 const express = require('express');
 const pino = require('pino');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 app.use(express.json());
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+const SESSION_ID = process.env.WA_SESSION_ID || 'session_081808630730';
+const USE_FIRESTORE_AUTH = process.env.WA_USE_FIRESTORE !== 'false'; // default true if configured
+
 let sock = null;
 let isConnected = false;
 let lastQr = '';
+let activeAuthBackend = 'local';
+
+/**
+ * Memilih dan menginisialisasi auth backend:
+ * 1. Coba Firestore Auth State terlebih dahulu jika diaktifkan
+ * 2. Jika gagal atau dinonaktifkan, fallback otomatis ke Local multi-file auth state ('baileys_auth_info')
+ */
+async function resolveAuthState() {
+    if (USE_FIRESTORE_AUTH) {
+        try {
+            console.log(`[AUTH] Menghubungkan sesi WhatsApp ke Google Cloud Firestore (ID: ${SESSION_ID})...`);
+            const firestoreAuth = await useFirestoreAuthState(SESSION_ID);
+            activeAuthBackend = 'firestore';
+            console.log(`[AUTH] ✓ Berhasil menggunakan backend Firestore Auth State.`);
+            return firestoreAuth;
+        } catch (err) {
+            console.warn(`[AUTH WARN] Gagal inisialisasi Firestore Auth (${err.message}). Mengaktifkan fallback lokal...`);
+        }
+    }
+
+    console.log('[AUTH] Menggunakan Local Multi-File Auth State (baileys_auth_info)...');
+    activeAuthBackend = 'local';
+    return await useMultiFileAuthState('baileys_auth_info');
+}
 
 async function startWhatsApp() {
-    const { state, saveCreds } = await useMultiFileAuthState('baileys_auth_info');
-    
-    sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: true,
-        logger: pino({ level: 'silent' })
-    });
+    try {
+        const { state, saveCreds } = await resolveAuthState();
+        
+        sock = makeWASocket({
+            auth: state,
+            printQRInTerminal: true,
+            logger: pino({ level: 'silent' })
+        });
 
-    sock.ev.on('creds.update', saveCreds);
-
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        if (qr) {
-            lastQr = qr;
-            console.log('\n======================================================');
-            console.log('📌 SCAN QR CODE DI BAWAH INI DENGAN WHATSAPP 081808630730:');
-            console.log('======================================================\n');
-            qrcode.generate(qr, { small: true });
-            console.log('\nAtau buka browser di: http://127.0.0.1:3000/qr');
-            console.log('======================================================\n');
-        }
-
-        if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Koneksi terputus. Mencoba reconnect:', shouldReconnect);
-            isConnected = false;
-            if (shouldReconnect) {
-                startWhatsApp();
+        sock.ev.on('creds.update', async () => {
+            try {
+                await saveCreds();
+            } catch (err) {
+                console.error('[AUTH ERROR] Gagal menyimpan kredensial:', err.message);
             }
-        } else if (connection === 'open') {
-            console.log('\n🎉 [SUKSES] WHATSAPP LOCAL GATEWAY BERHASIL TERHUBUNG DENGAN NOMOR ANDA!');
-            isConnected = true;
-            lastQr = '';
-        }
-    });
+        });
+
+        sock.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect, qr } = update;
+            if (qr) {
+                lastQr = qr;
+                console.log('\n======================================================');
+                console.log('📌 SCAN QR CODE DI BAWAH INI DENGAN WHATSAPP 081808630730:');
+                console.log('======================================================\n');
+                qrcode.generate(qr, { small: true });
+                console.log(`\nAtau buka browser di: http://127.0.0.1:${PORT}/qr`);
+                console.log('======================================================\n');
+            }
+
+            if (connection === 'close') {
+                const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
+                console.log('Koneksi terputus. Mencoba reconnect:', shouldReconnect);
+                isConnected = false;
+                if (shouldReconnect) {
+                    startWhatsApp();
+                }
+            } else if (connection === 'open') {
+                console.log(`\n🎉 [SUKSES] WHATSAPP GATEWAY BERHASIL TERHUBUNG! [Backend: ${activeAuthBackend.toUpperCase()}]`);
+                isConnected = true;
+                lastQr = '';
+            }
+        });
+    } catch (err) {
+        console.error('[GATEWAY FATAL ERROR] Gagal memulai WhatsApp socket:', err);
+    }
 }
 
 // Endpoint status
@@ -54,23 +94,26 @@ app.get('/status', (req, res) => {
     res.json({
         status: isConnected ? 'CONNECTED' : 'WAITING_FOR_SCAN',
         port: PORT,
+        auth_backend: activeAuthBackend,
+        session_id: SESSION_ID,
         qr_available: Boolean(lastQr)
     });
 });
 
-// Endpoint untuk melihat teks raw QR
+// Endpoint untuk melihat visual QR Code
 app.get('/qr', (req, res) => {
     if (isConnected) {
-        return res.send('<h3>WhatsApp sudah terhubung! Silakan gunakan sistem.</h3>');
+        return res.send(`<h3>WhatsApp sudah terhubung via backend ${activeAuthBackend.toUpperCase()}! Silakan gunakan sistem.</h3>`);
     }
     if (!lastQr) {
         return res.send('<h3>Sedang menginisialisasi QR Code, silakan refresh sebentar lagi...</h3>');
     }
     res.send(`
         <html>
-        <head><title>Scan QR WhatsApp Local Gateway</title></head>
+        <head><title>Scan QR WhatsApp Gateway</title></head>
         <body style="font-family: sans-serif; text-align: center; padding: 40px;">
-            <h2>Scan QR Code WhatsApp Gateway (Port 3000)</h2>
+            <h2>Scan QR Code WhatsApp Gateway (Port ${PORT})</h2>
+            <p>Auth Backend Aktif: <b>${activeAuthBackend.toUpperCase()}</b></p>
             <p>Buka WhatsApp di HP <b>081808630730</b> &gt; Perangkat Tertaut &gt; Tautkan Perangkat</p>
             <div id="qrcode" style="display: flex; justify-content: center; margin-top: 20px;"></div>
             <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -107,10 +150,10 @@ app.post('/api/send', async (req, res) => {
         const jid = `${cleanTo}@s.whatsapp.net`;
 
         const sent = await sock.sendMessage(jid, { text: message });
-        console.log(`[LOCAL GATEWAY] Pesan fisik terkirim ke ${cleanTo}`);
-        res.json({ success: true, messageId: sent.key.id, to: cleanTo });
+        console.log(`[GATEWAY] Pesan fisik terkirim ke ${cleanTo} via ${activeAuthBackend.toUpperCase()}`);
+        res.json({ success: true, messageId: sent.key.id, to: cleanTo, backend: activeAuthBackend });
     } catch (err) {
-        console.error('[LOCAL GATEWAY ERROR]', err);
+        console.error('[GATEWAY ERROR]', err);
         res.status(500).json({ success: false, error: err.message });
     }
 });

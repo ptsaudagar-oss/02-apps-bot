@@ -17,6 +17,9 @@ logs/*.log
 credentials.json
 token.json
 client_secrets.json
+*serviceAccount*.json
+firebase-*.json
+*.key
 
 # Operating System & IDE Artifacts
 .DS_Store
