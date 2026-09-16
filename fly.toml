@@ -1,0 +1,54 @@
+# 🚀 Fly.io Multi-Process Sovereign Specification: 24/7 Always-On Bot Ecosystem
+# Primary Region: sin (Singapore) — Ultra low latency (~18ms to Indonesia)
+# Always-On Policy: auto_stop_machines = false, min_machines_running = 1 (Zero Sleep, No Inactivity Shutdown)
+
+app = "ptsaudagar-apps-bot"
+primary_region = "sin"
+
+[build]
+  dockerfile = "Dockerfile.telegram"
+
+[env]
+  PORT = "8080"
+  PRODUCTION_MODE = "true"
+  GMAIL_AUTH_MODE = "app_password"
+  GMAIL_CHECK_INTERVAL_SECONDS = "60"
+  GMAIL_PRIMARY_ACCOUNT = "pt.saudagar@gmail.com"
+  GMAIL_ECOMMERCE_ACCOUNT = "8m.shop.online@gmail.com"
+  GMAIL_OWNER_ACCOUNT = "kafnun84@gmail.com"
+  TELEGRAM_AUTHORIZED_CHAT_IDS = "7828326094"
+  TELEGRAM_POLLING_INTERVAL = "2"
+  ENCLAVE_PII_REDACTION = "true"
+  AUTO_TRIGGER_INTERVAL_SECONDS = "60"
+  APM_PROJECT_CODENAME = "Antigravity Assistant Production Manager"
+  APM_ORGANIZATION = "PT. Saudagar"
+
+# Micro HTTP Health Check Service & Continuous Runtime
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  auto_stop_machines = false       # 🛡️ STRICT 24/7 POLICY: Never stop or sleep
+  auto_start_machines = true
+  min_machines_running = 1         # 🛡️ ALWAYS-ON: Minimum 1 machine running 100% of the time
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+    protocol = "http"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 256

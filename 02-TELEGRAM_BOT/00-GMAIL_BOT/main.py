@@ -125,9 +125,11 @@ class TelegramGmailBotEngine(BaseBotEngine):
         health = self.health_check()
         logger.info(f"Health check status: {health}")
 
-        # Cloud / Container HTTP Health Check Support (Koyeb / Docker / Serverless)
+        # Cloud / Container HTTP Health Check Support (Fly.io / Koyeb / Docker / Serverless)
         port_env = os.getenv("PORT") or os.getenv("TELEGRAM_BOT_PORT")
-        if not port_env and (os.getenv("KOYEB_APP_NAME") or os.getenv("KOYEB_SERVICE_NAME")):
+        if not port_env and (os.getenv("FLY_APP_NAME") or os.getenv("FLY_ALLOC_ID")):
+            port_env = "8080"
+        elif not port_env and (os.getenv("KOYEB_APP_NAME") or os.getenv("KOYEB_SERVICE_NAME")):
             port_env = "8000"
         if port_env:
             try:

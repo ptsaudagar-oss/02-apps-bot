@@ -1,18 +1,18 @@
-# 🐳 Dockerfile for 02-TELEGRAM_BOT on Koyeb Cloud (24/7 Autonomous Engine)
+# 🐳 Dockerfile for 02-TELEGRAM_BOT on Fly.io (24/7 Continuous Machine Engine)
 FROM python:3.11-slim
 
 LABEL maintainer="PT. Saudagar <pt.saudagar@gmail.com>"
 LABEL service="telegram-gmail-bot"
-LABEL cloud="koyeb"
+LABEL cloud="fly.io"
 LABEL region="sin"
-LABEL description="Autonomous Telegram Gmail Assistant Container for Koyeb 24/7"
+LABEL description="Autonomous Telegram Gmail Assistant Container for Fly.io 24/7 Always-On"
 
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
-    PORT=8000
+    PORT=8080
 
 # Install minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -26,12 +26,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application source
 COPY . /app
 
-# Expose Koyeb default service port
-EXPOSE 8000
+# Expose Fly.io standard internal service port
+EXPOSE 8080
 
-# Koyeb Health check probe
+# Health check probe
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
 # Start standalone Telegram Gmail Bot
 CMD ["python", "02-TELEGRAM_BOT/00-GMAIL_BOT/main.py"]
