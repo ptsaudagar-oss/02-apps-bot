@@ -59,6 +59,7 @@ class Settings:
         cid.strip() for cid in os.getenv("TELEGRAM_AUTHORIZED_CHAT_IDS", "").split(",") if cid.strip()
     ]
     TELEGRAM_POLLING_INTERVAL: int = int(os.getenv("TELEGRAM_POLLING_INTERVAL", "5"))
+    TELEGRAM_WA_FORWARD_BOT_TOKEN: str = os.getenv("TELEGRAM_WA_FORWARD_BOT_TOKEN", "")
 
     # Gmail Integration Settings
     GMAIL_USER_EMAIL: str = os.getenv("GMAIL_USER_EMAIL", "pt.saudagar@gmail.com")

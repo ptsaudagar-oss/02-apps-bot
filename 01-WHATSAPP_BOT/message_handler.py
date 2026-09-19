@@ -141,22 +141,23 @@ class WhatsAppMessageHandler:
 
         logger.info(f"Incoming WhatsApp message from {sender} ({sender_name}): '{body}'")
 
-        # ⚡ REAL-TIME DISPATCH: Teruskan chat WA masuk ke Telegram Master Owner (Satu Pintu Komando)
+        # ⚡ REAL-TIME DISPATCH: Teruskan chat WA masuk ke Telegram Khusus (@Ada_WA_Masoex_bot)
         try:
-            if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
+            forward_bot_token = settings.TELEGRAM_WA_FORWARD_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN
+            if forward_bot_token and settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
                 wa_forward_text = (
-                    f"🟢 <b>[WHATSAPP CHAT MASUK]</b> 💬\n"
+                    f"🟢 <b>[WHATSAPP MASUK]</b> 💬\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"• <b>Dari:</b> <code>+{sender}</code> ({sender_name})\n"
                     f"• <b>Pesan:</b> {body}\n"
                     f"• <b>Waktu:</b> <code>{time.strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
                     f"━━━━━━━━━━━━━━━━━━\n"
-                    f"⚡ <i>Dual-Channel WhatsApp-to-Telegram Bridge</i>"
+                    f"⚡ <i>Dedicated WA Forwarder (@Ada_WA_Masoex_bot)</i>"
                 )
                 for chat_id in settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
                     asyncio.create_task(
                         self.client.post(
-                            f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
+                            f"https://api.telegram.org/bot{forward_bot_token}/sendMessage",
                             json={
                                 "chat_id": chat_id,
                                 "text": wa_forward_text,
