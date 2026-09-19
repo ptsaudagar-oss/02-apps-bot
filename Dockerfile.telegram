@@ -33,5 +33,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8080}/health || exit 1
 
-# Start standalone Telegram Gmail Bot
-CMD ["python", "02-TELEGRAM_BOT/00-GMAIL_BOT/main.py"]
+# Start both Telegram Gmail Bot & WhatsApp Bridge Server
+CMD ["python", "apps_bot_manager.py", "run", "all"]
