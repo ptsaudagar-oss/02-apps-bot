@@ -69,6 +69,14 @@ class SessionManager:
         store = self._load_topic_store()
         return store.get(clean_number)
 
+    def get_phone_by_topic_id(self, topic_id: int) -> Optional[str]:
+        """Gets customer phone number associated with a Telegram forum topic ID."""
+        store = self._load_topic_store()
+        for phone, tid in store.items():
+            if tid == topic_id:
+                return phone
+        return None
+
     def save_topic_id(self, phone_number: str, topic_id: int) -> None:
         """Saves persistent Telegram forum topic ID for customer phone number."""
         clean_number = str(phone_number).strip().replace("+", "").replace("-", "")

@@ -201,12 +201,20 @@ async def receive_inbound_sms(req: InboundSMSRequest):
 
 
 
+try:
+    from .telegram_wa_bridge import TelegramWABridgeListener
+except ImportError:
+    from telegram_wa_bridge import TelegramWABridgeListener
+
+
 class WhatsAppBotEngine(BaseBotEngine):
     """Lifecycle engine for WhatsApp Bot service."""
 
     def __init__(self):
         super().__init__("WHATSAPP_BOT")
         self.server: uvicorn.Server = None
+        self.bridge_listener: TelegramWABridgeListener = TelegramWABridgeListener(whatsapp_handler)
+        self._bridge_task: asyncio.Task = None
 
     def health_check(self) -> Dict[str, Any]:
         """Performs sanity check on WhatsApp configuration and webhook settings."""
@@ -220,13 +228,17 @@ class WhatsAppBotEngine(BaseBotEngine):
         }
 
     async def start(self) -> None:
-        """Starts uvicorn server for WhatsApp webhook."""
+        """Starts uvicorn server for WhatsApp webhook and Telegram reply bridge."""
         if self._is_running:
             logger.warning("WhatsApp Bot server is already running.")
             return
 
         self._is_running = True
         logger.info(f"Starting WhatsApp Bot Server on {SERVER_HOST}:{SERVER_PORT}...")
+
+        # Jalankan Telegram WA Bridge Listener di background
+        self._bridge_task = asyncio.create_task(self.bridge_listener.start())
+        logger.info("Telegram WA Bridge Listener background worker launched.")
 
         config = uvicorn.Config(
             app=app,
@@ -245,9 +257,13 @@ class WhatsAppBotEngine(BaseBotEngine):
         """Stops the uvicorn server gracefully."""
         logger.info("Stopping WhatsApp Bot Server...")
         self._is_running = False
+        if self._bridge_task and not self._bridge_task.done():
+            self.bridge_listener.stop()
+            self._bridge_task.cancel()
         if self.server:
             self.server.should_exit = True
         await whatsapp_handler.client.aclose()
+        await self.bridge_listener.client.aclose()
         logger.info("WhatsApp Bot Server stopped cleanly.")
 
 
