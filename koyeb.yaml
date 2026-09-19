@@ -47,6 +47,10 @@ services:
         value: "7828326094"
       - key: TELEGRAM_POLLING_INTERVAL
         value: "2"
+      - key: TELEGRAM_WA_FORWARD_BOT_TOKEN
+        value: "8674830042:AAFy4Wc3C7smXta8MDR9rh23EpsRJYpgUIg"
+      - key: TELEGRAM_WA_FORUM_GROUP_ID
+        value: "-1004466206539"
       - key: ENCLAVE_PII_REDACTION
         value: "true"
       - key: AUTO_TRIGGER_INTERVAL_SECONDS

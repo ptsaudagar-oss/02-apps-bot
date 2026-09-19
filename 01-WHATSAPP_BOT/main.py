@@ -66,8 +66,9 @@ class InboundSMSRequest(BaseModel):
 
 
 @app.get("/", tags=["Health"])
+@app.get("/health", tags=["Health"])
 async def root():
-    """Health check and service status."""
+    """Health check and service status for Cloud Platforms (Koyeb/Fly.io)."""
     return {
         "service": "APPS_BOT WhatsApp Service",
         "status": "online",
