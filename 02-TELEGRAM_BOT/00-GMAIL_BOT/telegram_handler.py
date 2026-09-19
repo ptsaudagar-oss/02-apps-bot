@@ -184,12 +184,20 @@ class TelegramHandler:
             await self.send_message(chat_id, msg)
 
         elif base_cmd in ("/unread", "/inbox", "/cek"):
-            emails = gmail_service.get_unread_emails(limit=10)
+            emails = gmail_service.get_unread_emails_by_category(categories=["primary", "updates"], limit_per_category=10)
             if not emails:
-                await self.send_message(chat_id, "🎉 <b>Kotak Masuk Bersih!</b> Tidak ada email baru yang belum dibaca.")
+                await self.send_message(chat_id, "🎉 <b>Kotak Masuk Bersih!</b> Tidak ada email PRIMARY atau UPDATE yang belum dibaca.")
                 return
 
-            await self.send_message(chat_id, f"📬 <b>Ditemukan {len(emails)} Email Belum Dibaca (Maksimal 10 Terkini):</b>")
+            prim_count = sum(1 for e in emails if str(e.get("category", "")).upper() == "PRIMARY")
+            upd_count = sum(1 for e in emails if str(e.get("category", "")).upper() in ("UPDATES", "UPDATE"))
+            await self.send_message(
+                chat_id,
+                f"📬 <b>Ditemukan {len(emails)} Email Belum Dibaca:</b>\n"
+                f"• ⭐️ Primary: <code>{prim_count}/10</code>\n"
+                f"• 🔔 Updates: <code>{upd_count}/10</code>\n"
+                f"<i>(Kapasitas rolling window: 10 Primary + 10 Update = 20 Total FIFO)</i>"
+            )
             for item in emails:
                 text_card, markup = self._build_email_card(item)
                 await self.send_message(chat_id, text_card, reply_markup=markup)
@@ -201,8 +209,8 @@ class TelegramHandler:
                 f"🧹 <b>KOTAK MASUK BERSIH TOTAL!</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"• <b>Email Dibersihkan:</b> <code>{cleaned}</code> email lama ditandai telah dibaca.\n"
-                f"• <b>Live Stream Buffer:</b> Direset (Maksimal 10 inbox).\n"
-                f"• <b>Mode Otomatis:</b> Email baru akan masuk secara realtime dan menggeser email terlama.\n"
+                f"• <b>Live Stream Buffer:</b> Direset (10 Primary + 10 Update = Total 20 FIFO).\n"
+                f"• <b>Mode Otomatis:</b> Realtime live stream aktif, email baru akan menggeser kartu terlama per kategori.\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━\n"
                 f"✨ <i>Kotak masuk Gmail Anda kini bersih dan siap siaga!</i>"
             )
@@ -221,6 +229,7 @@ class TelegramHandler:
                 f"• <b>Telegram Token:</b> {'TERHUBUNG' if self.token else 'SIMULASI'} 🔑\n"
                 f"• <b>Gmail Account:</b> <code>{gmail_service.email_address or 'Belum Disetel'}</code>\n"
                 f"• <b>Status Gmail:</b> {'TERHUBUNG' if connected else 'OFFLINE/SIMULASI'}\n"
+                f"• <b>Live Stream FIFO:</b> 10 PRIMARY + 10 UPDATE (Total 20 Slot) ⚡\n"
                 f"• <b>Catatan:</b> {msg_conn}\n"
                 f"• <b>Gemini AI:</b> {'AKTIF (gemini-3.6-flash)' if settings.GEMINI_API_KEY else 'OFFLINE HEURISTIC'}\n"
             )
@@ -437,8 +446,15 @@ class TelegramHandler:
         safe_date = html.escape(str(email_item.get("date", "Hari ini")))
         safe_snippet = html.escape(str(email_item.get("snippet", "")))
 
+        cat = str(email_item.get("category", "")).upper()
+        cat_badge = ""
+        if cat == "PRIMARY":
+            cat_badge = " [⭐️ PRIMARY]"
+        elif cat in ("UPDATES", "UPDATE"):
+            cat_badge = " [🔔 UPDATE]"
+
         text = (
-            f"📨 <b>{safe_tag} {safe_subject}</b>\n"
+            f"📨 <b>{safe_tag}{cat_badge} {safe_subject}</b>\n"
             f"👤 <i>Dari: {safe_from}</i>\n"
             f"📥 <i>Ke: <code>{safe_to}</code></i>\n"
             f"📅 <code>{safe_date}</code>\n\n"

@@ -11,7 +11,9 @@ import time
 from datetime import datetime
 from typing import Set, Dict, Any, List, Optional
 
-MAX_STREAM_LIMIT = 10
+CATEGORY_STREAM_LIMIT = 10
+TOTAL_STREAM_LIMIT = 20
+ALLOWED_CATEGORIES = ["PRIMARY", "UPDATES"]
 STREAM_STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stream_state.json")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -60,7 +62,7 @@ logger = setup_logger("TG_GMAIL_BOT")
 
 
 class TelegramGmailBotEngine(BaseBotEngine):
-    """Production-grade Telegram Gmail Assistant Engine with Sliding-Window (Max 10) Live Stream."""
+    """Production-grade Telegram Gmail Assistant Engine with 10 Primary + 10 Update (Total 20) Sliding-Window Live Stream."""
 
     def __init__(self):
         super().__init__("TELEGRAM_GMAIL_BOT")
@@ -94,23 +96,50 @@ class TelegramGmailBotEngine(BaseBotEngine):
         except Exception as e:
             logger.debug(f"Could not save stream state: {e}")
 
-    def _record_stream_entry(self, email_id: str, chat_id: Any, message_id: int, subject: str) -> None:
-        """Records a new message card in the active sliding-window buffer."""
+    def _record_stream_entry(self, email_id: str, chat_id: Any, message_id: int, subject: str, category: str = "PRIMARY") -> None:
+        """Records a new message card in the active sliding-window buffer with category tagging."""
+        cat = str(category).upper()
+        if cat in ("UPDATE", "UPDATES"):
+            cat = "UPDATES"
+        else:
+            cat = "PRIMARY"
+
         self._stream_window = [e for e in self._stream_window if str(e.get("email_id")) != str(email_id)]
         self._stream_window.append({
             "email_id": str(email_id),
             "chat_id": chat_id,
             "message_id": message_id,
             "subject": subject,
+            "category": cat,
             "timestamp": time.time()
         })
         self._save_stream_state()
 
     async def _enforce_stream_window(self) -> None:
-        """Maintains maximum 10 unread items in the live stream by evicting and shifting the oldest."""
-        while len(self._stream_window) > MAX_STREAM_LIMIT:
+        """
+        Maintains maximum 10 unread items per category (PRIMARY and UPDATES)
+        and maximum 20 items overall in the live stream by evicting oldest.
+        """
+        for cat in ALLOWED_CATEGORIES:
+            cat_entries = [e for e in self._stream_window if e.get("category", "PRIMARY").upper() == cat]
+            while len(cat_entries) > CATEGORY_STREAM_LIMIT:
+                oldest = cat_entries.pop(0)
+                self._stream_window = [e for e in self._stream_window if e.get("email_id") != oldest["email_id"]]
+                logger.info(
+                    f"🔄 [SLIDING FIFO] Evicting oldest [{cat}] email ID {oldest['email_id']} "
+                    f"('{oldest['subject']}') to maintain {CATEGORY_STREAM_LIMIT} cards for {cat}."
+                )
+                await telegram_handler.delete_message(oldest["chat_id"], oldest["message_id"])
+                gmail_service.mark_as_read(oldest["email_id"])
+                self._save_stream_state()
+
+        # Global safeguard: total window must not exceed TOTAL_STREAM_LIMIT (20)
+        while len(self._stream_window) > TOTAL_STREAM_LIMIT:
             oldest = self._stream_window.pop(0)
-            logger.info(f"🔄 [SLIDING WINDOW] Evicting oldest email ID {oldest['email_id']} ('{oldest['subject']}') to maintain {MAX_STREAM_LIMIT} active cards.")
+            logger.info(
+                f"🔄 [GLOBAL FIFO] Evicting oldest overall email ID {oldest['email_id']} "
+                f"to maintain {TOTAL_STREAM_LIMIT} max total cards."
+            )
             await telegram_handler.delete_message(oldest["chat_id"], oldest["message_id"])
             gmail_service.mark_as_read(oldest["email_id"])
             self._save_stream_state()
@@ -273,19 +302,22 @@ class TelegramGmailBotEngine(BaseBotEngine):
                 await asyncio.sleep(5)
 
     async def _run_inbox_watcher(self) -> None:
-        """Monitors inbox periodically with real-time sliding window (max 10 items)."""
+        """Monitors inbox periodically with real-time sliding window (10 Primary + 10 Update = Total 20 items)."""
         interval = max(int(getattr(settings, "GMAIL_CHECK_INTERVAL_SECONDS", 15) or 15), 5)
-        logger.info(f"Gmail Inbox proactive watcher started (Interval: {interval}s). Real-time autonomous sliding-window (max {MAX_STREAM_LIMIT} items) ACTIVE.")
+        logger.info(
+            f"Gmail Inbox proactive watcher started (Interval: {interval}s). "
+            f"Real-time sliding-window ({CATEGORY_STREAM_LIMIT} Primary + {CATEGORY_STREAM_LIMIT} Update = Max {TOTAL_STREAM_LIMIT} items) ACTIVE."
+        )
 
-        # 1. Clean old backlog in Gmail, keeping only the 10 newest unread
-        cleaned_backlog = gmail_service.clean_inbox_backlog(keep_latest=MAX_STREAM_LIMIT)
+        # 1. Clean old backlog in Gmail, keeping only the 10 newest unread per category
+        cleaned_backlog = gmail_service.clean_inbox_backlog(keep_latest=CATEGORY_STREAM_LIMIT, categories=["primary", "updates"])
         if cleaned_backlog > 0:
             logger.info(f"🧹 Cleaned {cleaned_backlog} old backlog emails in Gmail upon watcher startup.")
 
         # 2. Scan initial unreads
         try:
-            initial_unreads = gmail_service.get_unread_emails(limit=MAX_STREAM_LIMIT)
-            logger.info(f"Initial inbox scan found {len(initial_unreads)} unread email(s).")
+            initial_unreads = gmail_service.get_unread_emails_by_category(categories=["primary", "updates"], limit_per_category=CATEGORY_STREAM_LIMIT)
+            logger.info(f"Initial inbox scan found {len(initial_unreads)} unread email(s) across PRIMARY & UPDATES.")
             for item in initial_unreads:
                 if item["id"] not in self._notified_email_ids:
                     self._notified_email_ids.add(item["id"])
@@ -297,12 +329,12 @@ class TelegramGmailBotEngine(BaseBotEngine):
         while self._is_running:
             try:
                 await asyncio.sleep(interval)
-                unreads = gmail_service.get_unread_emails(limit=MAX_STREAM_LIMIT)
+                unreads = gmail_service.get_unread_emails_by_category(categories=["primary", "updates"], limit_per_category=CATEGORY_STREAM_LIMIT)
 
                 for item in unreads:
                     if item["id"] not in self._notified_email_ids:
                         self._notified_email_ids.add(item["id"])
-                        logger.info(f"⚡ [REAL-TIME PUSH] New unread email detected ID {item['id']} ('{item.get('subject')}')")
+                        logger.info(f"⚡ [REAL-TIME PUSH] New unread [{item.get('category')}] email detected ID {item['id']} ('{item.get('subject')}')")
                         await self._dispatch_dual_channel_alert(item, is_initial=False)
 
             except asyncio.CancelledError:
@@ -311,19 +343,31 @@ class TelegramGmailBotEngine(BaseBotEngine):
                 logger.error(f"Error in Gmail watcher loop: {e}")
 
     async def _dispatch_dual_channel_alert(self, item: Dict[str, Any], is_initial: bool = False) -> None:
-        """Dispatches automated alert with sliding-window FIFO buffer (max 10 items)."""
+        """Dispatches automated alert with sliding-window FIFO buffer (10 Primary + 10 Update = Total 20 items)."""
         sender_addr = item.get("from", "")
         account_addr = item.get("account", "")
         subject = item.get("subject", "(Tanpa Subjek)")
         snippet = item.get("snippet", "")
         eid = item.get("id", "")
 
+        cat = str(item.get("category", "PRIMARY")).upper()
+        if cat in ("UPDATE", "UPDATES"):
+            cat = "UPDATES"
+            cat_badge = "🔔 [UPDATE]"
+        else:
+            cat = "PRIMARY"
+            cat_badge = "⭐️ [PRIMARY]"
+
+        cat_count = sum(1 for e in self._stream_window if e.get("category", "PRIMARY").upper() == cat) + 1
+        total_count = len(self._stream_window) + 1
+
         prefix = "[INBOX SCAN]" if is_initial else "🚨 [REAL-TIME ALERT]"
 
         # Build WhatsApp Alert Text
         wa_text = (
-            f"📬 *{prefix} EMAIL MASUK*\n"
+            f"📬 *{cat_badge} {prefix} EMAIL MASUK*\n"
             f"━━━━━━━━━━━━━━━━━━\n"
+            f"• *Kategori:* {cat} (Slot #{min(cat_count, CATEGORY_STREAM_LIMIT)}/{CATEGORY_STREAM_LIMIT})\n"
             f"• *Subjek:* {subject}\n"
             f"• *Pengirim:* {sender_addr}\n"
             f"• *ID:* #{eid}\n"
@@ -337,14 +381,18 @@ class TelegramGmailBotEngine(BaseBotEngine):
         if not is_public_safe:
             logger.info(f"[ENCLAVE DIRECT ROUTING] Email from {sender_addr} isolated to Owner Direct Notification.")
             card_text, markup = telegram_handler._build_email_card(item)
-            header_alert = f"🔒 <b>[ENCLAVE PRIVATE ALERT] {prefix} EMAIL OWNER MASUK:</b> 📬\n\n" + card_text
+            header_alert = (
+                f"🔒 <b>[ENCLAVE PRIVATE ALERT] {prefix} EMAIL OWNER MASUK:</b> 📬\n"
+                f"<i>Kategori: {cat} (Slot #{min(cat_count, CATEGORY_STREAM_LIMIT)}/{CATEGORY_STREAM_LIMIT} • Total #{min(total_count, TOTAL_STREAM_LIMIT)}/{TOTAL_STREAM_LIMIT})</i>\n\n"
+                + card_text
+            )
 
             # Push to Telegram Owner
             if settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
                 owner_chat = settings.TELEGRAM_AUTHORIZED_CHAT_IDS[0]
                 msg_id = await telegram_handler.send_message(owner_chat, header_alert, reply_markup=markup)
                 if msg_id and msg_id != 99999:
-                    self._record_stream_entry(eid, owner_chat, msg_id, subject)
+                    self._record_stream_entry(eid, owner_chat, msg_id, subject, category=cat)
                     await self._enforce_stream_window()
 
             # Push to Master WhatsApp Owner Enclave
@@ -357,11 +405,15 @@ class TelegramGmailBotEngine(BaseBotEngine):
 
         # 2. Standard Dispatch to Telegram Authorized Chats
         card_text, markup = telegram_handler._build_email_card(item)
-        header_alert = f"<b>{prefix} EMAIL MASUK!</b> 📬\n\n" + card_text
+        header_alert = (
+            f"{cat_badge} <b>{prefix} EMAIL MASUK!</b> 📬\n"
+            f"<i>Kategori: {cat} (Slot #{min(cat_count, CATEGORY_STREAM_LIMIT)}/{CATEGORY_STREAM_LIMIT} • Total Live: #{min(total_count, TOTAL_STREAM_LIMIT)}/{TOTAL_STREAM_LIMIT})</i>\n\n"
+            + card_text
+        )
         for chat_id in settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
             msg_id = await telegram_handler.send_message(chat_id, header_alert, reply_markup=markup)
             if msg_id and msg_id != 99999:
-                self._record_stream_entry(eid, chat_id, msg_id, subject)
+                self._record_stream_entry(eid, chat_id, msg_id, subject, category=cat)
                 await self._enforce_stream_window()
 
         # 3. Direct Dispatch to Master Admin WhatsApp

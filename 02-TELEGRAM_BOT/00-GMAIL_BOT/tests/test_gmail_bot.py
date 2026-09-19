@@ -19,8 +19,8 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 from core.config import settings
-from gmail_service import GmailService
-from telegram_handler import TelegramHandler
+from gmail_service import GmailService, gmail_service
+from telegram_handler import TelegramHandler, telegram_handler
 from main import TelegramGmailBotEngine
 
 
@@ -33,6 +33,12 @@ class TestGmailBotModule(unittest.TestCase):
 
     def tearDown(self):
         self.loop.close()
+        try:
+            from main import STREAM_STATE_PATH
+            with open(STREAM_STATE_PATH, "w", encoding="utf-8") as f:
+                json.dump([], f)
+        except Exception:
+            pass
 
     def test_gmail_service_simulation(self):
         """Test mock inbox fetching, detail retrieval, and mark-as-read in simulation mode."""
@@ -158,29 +164,73 @@ class TestGmailBotModule(unittest.TestCase):
         self.assertEqual(markup_owner["inline_keyboard"][0][0]["text"], "🛡️ HITL Otorisasi")
 
     def test_sliding_window_buffer(self):
-        """Test that stream window enforces max 10 items and evicts oldest."""
+        """Test that stream window enforces max 10 Primary + max 10 Update = Total 20 FIFO items."""
+        from unittest.mock import patch, AsyncMock, MagicMock
+
         engine = TelegramGmailBotEngine()
         engine._stream_window = []
 
-        # Record 12 items
+        # Record 12 PRIMARY items
         for i in range(1, 13):
             engine._record_stream_entry(
-                email_id=str(1000 + i),
+                email_id=f"P{i}",
                 chat_id="999",
                 message_id=5000 + i,
-                subject=f"Email Subject {i}"
+                subject=f"Primary Subject {i}",
+                category="PRIMARY"
             )
 
-        self.assertEqual(len(engine._stream_window), 12)
+        # Record 12 UPDATES items
+        for i in range(1, 13):
+            engine._record_stream_entry(
+                email_id=f"U{i}",
+                chat_id="999",
+                message_id=6000 + i,
+                subject=f"Update Subject {i}",
+                category="UPDATES"
+            )
 
-        # Enforce sliding window (should evict 2 oldest)
-        self.loop.run_until_complete(engine._enforce_stream_window())
+        self.assertEqual(len(engine._stream_window), 24)
 
-        self.assertEqual(len(engine._stream_window), 10)
-        # Oldest remaining should be item 3
-        self.assertEqual(engine._stream_window[0]["email_id"], "1003")
-        # Newest remaining should be item 12
-        self.assertEqual(engine._stream_window[-1]["email_id"], "1012")
+        with patch.object(telegram_handler, "delete_message", new_callable=AsyncMock) as mock_del, \
+             patch.object(gmail_service, "mark_as_read", return_value=True) as mock_read:
+            # Enforce sliding window (should evict 2 oldest PRIMARY and 2 oldest UPDATES)
+            self.loop.run_until_complete(engine._enforce_stream_window())
+            self.assertEqual(mock_del.call_count, 4)
+            self.assertEqual(mock_read.call_count, 4)
+
+        self.assertEqual(len(engine._stream_window), 20)
+        primary_entries = [e for e in engine._stream_window if e["category"] == "PRIMARY"]
+        update_entries = [e for e in engine._stream_window if e["category"] == "UPDATES"]
+
+        self.assertEqual(len(primary_entries), 10)
+        self.assertEqual(len(update_entries), 10)
+
+        # Oldest remaining PRIMARY should be P3, newest P12
+        self.assertEqual(primary_entries[0]["email_id"], "P3")
+        self.assertEqual(primary_entries[-1]["email_id"], "P12")
+
+        # Oldest remaining UPDATE should be U3, newest U12
+        self.assertEqual(update_entries[0]["email_id"], "U3")
+        self.assertEqual(update_entries[-1]["email_id"], "U12")
+
+    def test_category_filtering(self):
+        """Verify that get_unread_emails_by_category only returns PRIMARY and UPDATES."""
+        svc = GmailService()
+        svc.app_password = ""  # Simulation
+        svc._mock_data = [
+            {"id": "1", "subject": "P1", "from": "a@b.com", "body": "x", "is_read": False, "category": "PRIMARY"},
+            {"id": "2", "subject": "U1", "from": "a@b.com", "body": "x", "is_read": False, "category": "UPDATES"},
+            {"id": "3", "subject": "Promo", "from": "a@b.com", "body": "x", "is_read": False, "category": "PROMOTIONS"},
+            {"id": "4", "subject": "Social", "from": "a@b.com", "body": "x", "is_read": False, "category": "SOCIAL"},
+        ]
+        emails = svc.get_unread_emails_by_category(categories=["primary", "updates"], limit_per_category=10)
+        self.assertEqual(len(emails), 2)
+        categories = [e["category"].upper() for e in emails]
+        self.assertIn("PRIMARY", categories)
+        self.assertIn("UPDATES", categories)
+        self.assertNotIn("PROMOTIONS", categories)
+        self.assertNotIn("SOCIAL", categories)
 
     def test_gmail_clean_backlog(self):
         """Test clean_inbox_backlog simulation."""

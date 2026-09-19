@@ -77,59 +77,79 @@ class GmailService:
             logger.error(f"Gmail IMAP connection failure: {e}")
             return False, str(e)
 
-    def get_unread_emails(self, limit: int = 5) -> List[Dict[str, Any]]:
-        """Fetches unread emails across all configured production Gmail accounts or simulation data."""
+    def get_unread_emails_by_category(
+        self,
+        categories: Optional[List[str]] = None,
+        limit_per_category: int = 10
+    ) -> List[Dict[str, Any]]:
+        """
+        Fetches unread emails strictly filtered to specified Gmail categories (default: PRIMARY and UPDATES).
+        Ignores other categories like PROMOTIONS, SOCIAL, FORUMS, SPAM.
+        Returns combined list (up to limit_per_category per category).
+        """
+        target_categories = [c.lower().strip() for c in (categories or ["primary", "updates"])]
+
         if not self.is_configured():
-            logger.info("Operating in SIMULATION mode. Scanning multi-account mock inbox (B2B, E-Commerce, Owner Enclave).")
-            return [e for e in self._mock_data if not e["is_read"]][:limit]
+            logger.info("Operating in SIMULATION mode. Scanning categorized mock inbox (PRIMARY & UPDATES).")
+            matched: List[Dict[str, Any]] = []
+            for cat in target_categories:
+                cat_emails = [
+                    e for e in self._mock_data
+                    if not e.get("is_read", False) and e.get("category", "PRIMARY").lower() == cat
+                ]
+                matched.extend(cat_emails[:limit_per_category])
+            return matched
 
         unread_list: List[Dict[str, Any]] = []
-        # Target accounts to scan
-        [
-            getattr(settings, "GMAIL_PRIMARY_ACCOUNT", "pt.saudagar@gmail.com"),
-            getattr(settings, "GMAIL_ECOMMERCE_ACCOUNT", "8m.shop.online@gmail.com"),
-            getattr(settings, "GMAIL_OWNER_ACCOUNT", "kafnun84@gmail.com"),
-        ]
 
         try:
             mail = imaplib.IMAP4_SSL(GMAIL_IMAP_SERVER, GMAIL_IMAP_PORT, timeout=15)
             mail.login(self.email_address, self.app_password)
             mail.select("INBOX")
 
-            status, search_data = mail.search(None, "UNSEEN")
-            if status == "OK" and search_data[0]:
-                email_ids = search_data[0].split()
-                for e_id in reversed(email_ids[-limit:]):
-                    status, data = mail.fetch(e_id, "(RFC822)")
-                    if status != "OK":
-                        continue
+            for cat in target_categories:
+                cat_display = cat.upper()
+                query_str = f'"category:{cat} is:unread"'
+                status, search_data = mail.search(None, "X-GM-RAW", query_str)
+                if status == "OK" and search_data[0]:
+                    email_ids = search_data[0].split()
+                    for e_id in reversed(email_ids[-limit_per_category:]):
+                        status, data = mail.fetch(e_id, "(BODY.PEEK[])")
+                        if status != "OK" or not data:
+                            continue
 
-                    for response_part in data:
-                        if isinstance(response_part, tuple):
-                            msg = email.message_from_bytes(response_part[1])
-                            subject = self._decode_mime_words(msg.get("Subject", "(Tanpa Subjek)"))
-                            sender = self._decode_mime_words(msg.get("From", "(Pengirim Tidak Dikenal)"))
-                            date_str = msg.get("Date", "")
-                            body = self._extract_body(msg)
+                        for response_part in data:
+                            if isinstance(response_part, tuple):
+                                msg = email.message_from_bytes(response_part[1])
+                                subject = self._decode_mime_words(msg.get("Subject", "(Tanpa Subjek)"))
+                                sender = self._decode_mime_words(msg.get("From", "(Pengirim Tidak Dikenal)"))
+                                date_str = msg.get("Date", "")
+                                body = self._extract_body(msg)
 
-                            email_obj = {
-                                "id": e_id.decode("utf-8", errors="ignore"),
-                                "subject": subject,
-                                "from": sender,
-                                "date": date_str,
-                                "snippet": body[:180].replace("\n", " ").strip(),
-                                "body": body,
-                                "is_read": False,
-                                "account": self.email_address,
-                            }
-                            sanitized_obj = privacy_enclave.sanitize_email_payload(email_obj)
-                            unread_list.append(sanitized_obj)
+                                email_obj = {
+                                    "id": e_id.decode("utf-8", errors="ignore"),
+                                    "subject": subject,
+                                    "from": sender,
+                                    "date": date_str,
+                                    "snippet": body[:180].replace("\n", " ").strip(),
+                                    "body": body,
+                                    "is_read": False,
+                                    "account": self.email_address,
+                                    "category": cat_display,
+                                }
+                                sanitized_obj = privacy_enclave.sanitize_email_payload(email_obj)
+                                unread_list.append(sanitized_obj)
 
             mail.logout()
         except Exception as e:
-            logger.error(f"Error fetching unread Gmail messages: {e}")
+            logger.error(f"Error fetching categorized Gmail messages: {e}")
 
         return unread_list
+
+    def get_unread_emails(self, limit: int = 10, category: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Fetches unread emails, defaulting to PRIMARY and UPDATES categories (up to limit per category)."""
+        categories = [category] if category else ["primary", "updates"]
+        return self.get_unread_emails_by_category(categories=categories, limit_per_category=limit)
 
     def get_email_details(self, email_id: str) -> Optional[Dict[str, Any]]:
         """Retrieves full email details with Privacy Enclave PII sanitization."""
@@ -195,8 +215,8 @@ class GmailService:
             logger.error(f"Failed to mark email {email_id} as read: {e}")
             return False
 
-    def clean_inbox_backlog(self, keep_latest: int = 10) -> int:
-        """Marks old unread emails as Seen in Gmail, keeping only the specified number of newest unread emails."""
+    def clean_inbox_backlog(self, keep_latest: int = 10, categories: Optional[List[str]] = None) -> int:
+        """Marks old unread emails as Seen in Gmail, keeping only the specified number of newest unread emails per category."""
         if not self.is_configured():
             if len(self._mock_data) > keep_latest:
                 cleaned = len(self._mock_data) - keep_latest
@@ -204,31 +224,47 @@ class GmailService:
                 return cleaned
             return 0
 
+        target_cats = categories or ["primary", "updates"]
+        total_cleaned = 0
+
         try:
             mail = imaplib.IMAP4_SSL(GMAIL_IMAP_SERVER, GMAIL_IMAP_PORT, timeout=15)
             mail.login(self.email_address, self.app_password)
             mail.select("INBOX")
 
-            status, response = mail.search(None, "UNSEEN")
-            cleaned_count = 0
-            if status == "OK" and response[0]:
-                ids = response[0].split()
-                if len(ids) > keep_latest:
-                    to_mark = ids[:-keep_latest] if keep_latest > 0 else ids
-                    range_str = f"{to_mark[0].decode()}:{to_mark[-1].decode()}"
-                    mail.store(range_str, "+FLAGS.SILENT", "\\Seen")
-                    cleaned_count = len(to_mark)
-                    logger.info(f"Cleaned {cleaned_count} old unread email(s) in Gmail, kept latest {keep_latest}.")
+            for cat in target_cats:
+                cat_norm = cat.lower().strip()
+                status, response = mail.search(None, "X-GM-RAW", f'"category:{cat_norm} is:unread"')
+                if status == "OK" and response[0]:
+                    ids = response[0].split()
+                    if len(ids) > keep_latest:
+                        to_mark = ids[:-keep_latest] if keep_latest > 0 else ids
+                        range_str = f"{to_mark[0].decode()}:{to_mark[-1].decode()}"
+                        mail.store(range_str, "+FLAGS.SILENT", "\\Seen")
+                        cleaned_count = len(to_mark)
+                        total_cleaned += cleaned_count
+                        logger.info(f"Cleaned {cleaned_count} old unread email(s) in category '{cat_norm}', kept latest {keep_latest}.")
+
+            # Also clear non-target categories (promotions, social, forums) if any exist
+            if keep_latest == 0:
+                for non_target in ["promotions", "social", "forums"]:
+                    status, response = mail.search(None, "X-GM-RAW", f'"category:{non_target} is:unread"')
+                    if status == "OK" and response[0]:
+                        ids = response[0].split()
+                        if ids:
+                            range_str = f"{ids[0].decode()}:{ids[-1].decode()}"
+                            mail.store(range_str, "+FLAGS.SILENT", "\\Seen")
+                            total_cleaned += len(ids)
 
             mail.logout()
-            return cleaned_count
+            return total_cleaned
         except Exception as e:
             logger.error(f"Error cleaning inbox backlog in Gmail: {e}")
             return 0
 
     def clean_all_inbox(self) -> int:
-        """Marks 100% of unread emails as Seen in Gmail."""
-        return self.clean_inbox_backlog(keep_latest=0)
+        """Marks 100% of unread emails as Seen across all categories in Gmail."""
+        return self.clean_inbox_backlog(keep_latest=0, categories=["primary", "updates", "promotions", "social", "forums"])
 
     def send_email(self, to_address: str, subject: str, body: str, force_simulation: bool = False) -> Tuple[bool, str]:
         """Sends an email via SMTP or simulated dispatch."""
@@ -300,6 +336,7 @@ class GmailService:
                 "to": "pt.saudagar@gmail.com",
                 "account": "pt.saudagar@gmail.com",
                 "date": now_str,
+                "category": "PRIMARY",
                 "snippet": "Halo Tim, berikut rangkuman capaian sprint pekan ini: modul Telegram Bot dan WhatsApp Bot telah aktif...",
                 "body": (
                     "Halo Tim,\n\n"
@@ -319,6 +356,7 @@ class GmailService:
                 "to": "8m.shop.online@gmail.com",
                 "account": "8m.shop.online@gmail.com",
                 "date": now_str,
+                "category": "UPDATES",
                 "snippet": "Pesanan baru telah dibayar oleh pembeli Senilai Rp 450.000. Mohon segera kirimkan resi pesanan...",
                 "body": (
                     "Yth. Seller 8M Shop Online,\n\n"
@@ -338,6 +376,7 @@ class GmailService:
                 "to": "kafnun84@gmail.com",
                 "account": "kafnun84@gmail.com",
                 "date": now_str,
+                "category": "PRIMARY",
                 "snippet": "Laporan rekening master dan dividen kuartal berjalan. NIK 3271012345678901 telah terverifikasi...",
                 "body": (
                     "Yth. Kafnun Asep Nurhuda Al-Hakim,\n\n"
