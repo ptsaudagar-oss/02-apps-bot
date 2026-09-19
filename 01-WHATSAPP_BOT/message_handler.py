@@ -161,11 +161,10 @@ class WhatsAppMessageHandler:
                 wa_keyboard = {
                     "inline_keyboard": [
                         [
-                            {"text": "💬 Buka Chat di WhatsApp", "url": wa_direct_url}
+                            {"text": "✍️ Balas Langsung di Tele", "callback_data": f"reply_tele:{clean_phone}"}
                         ],
                         [
-                            {"text": "⚡ Ringkas AI", "callback_data": f"wa_summary:{sender}"},
-                            {"text": "📝 Draf Balasan", "callback_data": f"wa_draft:{sender}"}
+                            {"text": "💬 Balas via WA Apps", "url": wa_direct_url}
                         ]
                     ]
                 }
