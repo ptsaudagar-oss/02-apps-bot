@@ -5,6 +5,10 @@ Maintains in-memory conversation histories, intent tracking, and state machines 
 
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+import json
+import os
+
+TOPIC_STORE_PATH = os.path.join(os.path.dirname(__file__), "topic_store.json")
 
 
 class UserSession:
@@ -58,6 +62,35 @@ class SessionManager:
     def clear_all(self) -> None:
         """Clears all sessions (useful for tests)."""
         self._sessions.clear()
+
+    def get_topic_id(self, phone_number: str) -> Optional[int]:
+        """Gets persistent Telegram forum topic ID for customer phone number."""
+        clean_number = str(phone_number).strip().replace("+", "").replace("-", "")
+        store = self._load_topic_store()
+        return store.get(clean_number)
+
+    def save_topic_id(self, phone_number: str, topic_id: int) -> None:
+        """Saves persistent Telegram forum topic ID for customer phone number."""
+        clean_number = str(phone_number).strip().replace("+", "").replace("-", "")
+        store = self._load_topic_store()
+        store[clean_number] = topic_id
+        self._save_topic_store(store)
+
+    def _load_topic_store(self) -> Dict[str, int]:
+        if os.path.exists(TOPIC_STORE_PATH):
+            try:
+                with open(TOPIC_STORE_PATH, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def _save_topic_store(self, store: Dict[str, int]) -> None:
+        try:
+            with open(TOPIC_STORE_PATH, "w", encoding="utf-8") as f:
+                json.dump(store, f, indent=2)
+        except Exception:
+            pass
 
     def purge_all_simulated_sessions(self) -> int:
         """

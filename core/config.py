@@ -60,6 +60,7 @@ class Settings:
     ]
     TELEGRAM_POLLING_INTERVAL: int = int(os.getenv("TELEGRAM_POLLING_INTERVAL", "5"))
     TELEGRAM_WA_FORWARD_BOT_TOKEN: str = os.getenv("TELEGRAM_WA_FORWARD_BOT_TOKEN", "")
+    TELEGRAM_WA_FORUM_GROUP_ID: str = os.getenv("TELEGRAM_WA_FORUM_GROUP_ID", "-1004466206539")
 
     # Gmail Integration Settings
     GMAIL_USER_EMAIL: str = os.getenv("GMAIL_USER_EMAIL", "pt.saudagar@gmail.com")

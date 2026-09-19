@@ -63,6 +63,33 @@ class WhatsAppMessageHandler:
         """Checks if either Meta or Local Gateway is configured."""
         return bool((self.access_token and self.phone_number_id) or self.local_gateway_url)
 
+    async def get_or_create_forum_topic(self, forward_bot_token: str, group_id: str, sender_phone: str, sender_name: str) -> Optional[int]:
+        """
+        Retrieves existing forum topic ID for customer or creates a new dedicated room.
+        Ensures 1 customer = 1 Telegram topic thread!
+        """
+        clean_phone = "".join(filter(str.isdigit, str(sender_phone)))
+        existing_topic_id = session_manager.get_topic_id(clean_phone)
+        if existing_topic_id:
+            return existing_topic_id
+
+        # Buat topik forum baru di Telegram Supergroup
+        topic_name = f"💬 +{clean_phone} - {sender_name}"[:128]
+        url = f"https://api.telegram.org/bot{forward_bot_token}/createForumTopic"
+        try:
+            resp = await self.client.post(url, json={"chat_id": group_id, "name": topic_name}, timeout=10.0)
+            data = resp.json()
+            if data.get("ok"):
+                new_topic_id = data["result"]["message_thread_id"]
+                session_manager.save_topic_id(clean_phone, new_topic_id)
+                logger.info(f"Created new forum topic for {clean_phone}: Thread ID {new_topic_id}")
+                return new_topic_id
+            else:
+                logger.warning(f"Failed to create forum topic: {data}")
+        except Exception as e:
+            logger.error(f"Error calling createForumTopic: {e}")
+        return None
+
     def is_meta_configured(self) -> bool:
         """Checks if Meta WhatsApp Cloud API credentials are validly supplied."""
         return bool(self.access_token and self.phone_number_id)
@@ -169,19 +196,45 @@ class WhatsAppMessageHandler:
                     ]
                 }
 
-                for chat_id in settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
+                target_forum_id = getattr(settings, "TELEGRAM_WA_FORUM_GROUP_ID", None)
+                if target_forum_id:
+                    # 1 Pelanggan = 1 Topik Khusus di Telegram Supergroup WA_Inbox!
+                    topic_id = await self.get_or_create_forum_topic(
+                        forward_bot_token=forward_bot_token,
+                        group_id=str(target_forum_id),
+                        sender_phone=clean_phone,
+                        sender_name=sender_name
+                    )
+                    payload = {
+                        "chat_id": target_forum_id,
+                        "text": wa_forward_text,
+                        "parse_mode": "HTML",
+                        "reply_markup": wa_keyboard
+                    }
+                    if topic_id:
+                        payload["message_thread_id"] = topic_id
+
                     asyncio.create_task(
                         self.client.post(
                             f"https://api.telegram.org/bot{forward_bot_token}/sendMessage",
-                            json={
-                                "chat_id": chat_id,
-                                "text": wa_forward_text,
-                                "parse_mode": "HTML",
-                                "reply_markup": wa_keyboard
-                            },
+                            json=payload,
                             timeout=5.0
                         )
                     )
+                else:
+                    for chat_id in settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
+                        asyncio.create_task(
+                            self.client.post(
+                                f"https://api.telegram.org/bot{forward_bot_token}/sendMessage",
+                                json={
+                                    "chat_id": chat_id,
+                                    "text": wa_forward_text,
+                                    "parse_mode": "HTML",
+                                    "reply_markup": wa_keyboard
+                                },
+                                timeout=5.0
+                            )
+                        )
         except Exception as forward_err:
             logger.error(f"Error dispatching WA message to Telegram: {forward_err}")
 
