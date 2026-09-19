@@ -12,30 +12,69 @@ from core.logger import setup_logger
 from core import context_loader
 from core.privacy_enclave import privacy_enclave
 from core.telemetry import telemetry_hub
+import requests
+import json
 
 logger = setup_logger("AI_HELPER")
 
 
 class AIHelper:
-    """Provides LLM-assisted features with graceful offline fallbacks."""
+    """Provides LLM-assisted features with Google GenAI & Mistral AI, plus graceful offline fallbacks."""
 
     def __init__(self):
-        self._client = None
+        self._gemini_client = None
+        self._mistral_api_key = settings.MISTRAL_API_KEY
+        self._mistral_model = settings.MISTRAL_MODEL
+        self._mistral_endpoint = settings.MISTRAL_ENDPOINT
         self._system_prompt: str = ""
-        self._initialize_client()
+        self._initialize_clients()
         self._load_system_context()
 
-    def _initialize_client(self):
+    def _initialize_clients(self):
+        # 1. Initialize Mistral AI Client (Primary / MODE_MISTRAL)
+        if self._mistral_api_key:
+            logger.info(f"Mistral AI engine successfully connected (Model: {self._mistral_model}).")
+        
+        # 2. Initialize Google GenAI Client
         if settings.GEMINI_API_KEY:
             try:
                 from google import genai
-                self._client = genai.Client(api_key=settings.GEMINI_API_KEY)
+                self._gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
                 logger.info("Google GenAI client successfully initialized.")
             except Exception as e:
-                logger.warning(f"Failed to initialize GenAI client: {e}. Falling back to offline heuristics.")
-                self._client = None
+                logger.warning(f"Failed to initialize GenAI client: {e}.")
+                self._gemini_client = None
         else:
-            logger.debug("GEMINI_API_KEY not configured. Running in offline heuristic mode.")
+            logger.debug("GEMINI_API_KEY not configured.")
+
+    def _call_mistral(self, prompt: str, system_inst: str = "") -> str:
+        """Executes fast inference via Mistral AI REST endpoint."""
+        if not self._mistral_api_key:
+            return ""
+        headers = {
+            "Authorization": f"Bearer {self._mistral_api_key}",
+            "Content-Type": "application/json"
+        }
+        messages = []
+        if system_inst:
+            messages.append({"role": "system", "content": system_inst})
+        messages.append({"role": "user", "content": prompt})
+        
+        payload = {
+            "model": self._mistral_model,
+            "messages": messages,
+            "temperature": 0.3
+        }
+        try:
+            resp = requests.post(f"{self._mistral_endpoint}/chat/completions", headers=headers, json=payload, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data.get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            else:
+                logger.warning(f"Mistral API returned status {resp.status_code}: {resp.text}")
+        except Exception as e:
+            logger.error(f"Error communicating with Mistral AI: {e}")
+        return ""
 
     def _load_system_context(self):
         """Loads SOUL.md + USER.md as the system prompt for AI interactions."""
@@ -54,68 +93,79 @@ class AIHelper:
             )
 
     def summarize_text(self, text: str, max_words: int = 100) -> str:
-        """Summarizes email or chat text concisely with automated PII redaction."""
+        """Summarizes email or chat text concisely with automated PII redaction (Mistral AI + Gemini fallback)."""
         if not text or not text.strip():
             return "Tidak ada konten untuk diringkas."
 
         # Redact sensitive PII before any AI processing
         sanitized_text = privacy_enclave.redact_pii(text) if settings.ENCLAVE_PII_REDACTION else text
 
-        if self._client:
+        prompt = (
+            f"Ringkas teks berikut secara singkat, padat, dan profesional "
+            f"dalam maksimal {max_words} kata menggunakan Bahasa Indonesia:\n\n{sanitized_text}"
+        )
+
+        # 1. Primary: Mistral AI (MODE_MISTRAL)
+        if self._mistral_api_key:
             try:
-                prompt = (
-                    f"Ringkas teks berikut secara singkat, padat, dan profesional "
-                    f"dalam maksimal {max_words} kata menggunakan Bahasa Indonesia:\n\n{sanitized_text}"
-                )
-                response = self._client.models.generate_content(
+                mistral_resp = self._call_mistral(prompt, self._system_prompt)
+                if mistral_resp:
+                    telemetry_hub.record_token_usage(
+                        raw_prompt_tokens=int(len(prompt.split()) * 1.3),
+                        compressed_prompt_tokens=int(len(prompt.split()) * 1.0),
+                        completion_tokens=int(len(mistral_resp.split()) * 1.3),
+                        tier="tier_1_subscription",
+                        model=self._mistral_model
+                    )
+                    return mistral_resp
+            except Exception as e:
+                logger.warning(f"Mistral AI summarization failed: {e}. Falling back to Gemini/Heuristic.")
+
+        # 2. Secondary: Google GenAI (Gemini)
+        if self._gemini_client:
+            try:
+                response = self._gemini_client.models.generate_content(
                     model=settings.GEMINI_MODEL,
                     contents=prompt,
                     config={"system_instruction": self._system_prompt} if self._system_prompt else None
                 )
                 if response and response.text:
-                    # Record 9Router compressed token metrics
-                    raw_est = int(len(prompt.split()) * 1.3)
-                    comp_est = int(raw_est * 0.68)  # ~32% RTK compression savings
-                    out_est = int(len(response.text.split()) * 1.3)
-                    telemetry_hub.record_token_usage(
-                        raw_prompt_tokens=raw_est,
-                        compressed_prompt_tokens=comp_est,
-                        completion_tokens=out_est,
-                        tier="tier_1_subscription",
-                        model=settings.GEMINI_MODEL
-                    )
                     return response.text.strip()
             except Exception as e:
                 logger.error(f"GenAI summarization error: {e}. Using deterministic fallback.")
-                telemetry_hub.record_token_usage(
-                    raw_prompt_tokens=len(sanitized_text.split()),
-                    compressed_prompt_tokens=len(sanitized_text.split()),
-                    completion_tokens=max_words,
-                    tier="tier_3_heuristic",
-                    model="heuristic-local"
-                )
 
-        # Deterministic heuristic fallback
+        # 3. Deterministic heuristic fallback
         words = sanitized_text.split()
         if len(words) <= max_words:
             return sanitized_text
         return " ".join(words[:max_words]) + "..."
 
     def draft_reply(self, subject: str, body: str, tone: str = "profesional, sopan, dan solutif") -> str:
-        """Drafts an intelligent email reply with PII redaction protection."""
+        """Drafts an intelligent email reply with PII redaction protection (Mistral AI + Gemini fallback)."""
         # Redact sensitive PII
         sanitized_subject = privacy_enclave.redact_pii(subject) if settings.ENCLAVE_PII_REDACTION else subject
         sanitized_body = privacy_enclave.redact_pii(body) if settings.ENCLAVE_PII_REDACTION else body
 
-        if self._client:
+        prompt = (
+            f"Buatkan draf balasan email dengan nada {tone}.\n\n"
+            f"Subjek Asli: {sanitized_subject}\n"
+            f"Isi Pesan Asli:\n{sanitized_body}\n\n"
+            f"Tulis balasan langsung tanpa pembuka meta (misal: 'Berikut adalah draf...')."
+        )
+
+        # 1. Primary: Mistral AI (MODE_MISTRAL)
+        if self._mistral_api_key:
             try:
-                prompt = (
-                    f"Buatkan draf balasan email dengan nada {tone}.\n\n"
-                    f"Subjek Asli: {sanitized_subject}\n"
-                    f"Isi Pesan Asli:\n{sanitized_body}\n\n"
-                    f"Tulis balasan langsung tanpa pembuka meta (misal: 'Berikut adalah draf...')."
-                )
-                response = self._client.models.generate_content(
+                mistral_resp = self._call_mistral(prompt, self._system_prompt)
+                if mistral_resp:
+                    return mistral_resp
+            except Exception as e:
+                logger.warning(f"Mistral AI draft generation failed: {e}. Falling back to Gemini/Heuristic.")
+
+        # 2. Secondary: Google GenAI (Gemini)
+        if self._gemini_client:
+            try:
+                response = self._gemini_client.models.generate_content(
                     model=settings.GEMINI_MODEL,
                     contents=prompt,
                     config={"system_instruction": self._system_prompt} if self._system_prompt else None

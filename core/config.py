@@ -49,9 +49,14 @@ class Settings:
     TELEGRAM_BOT_DIR: str = os.path.join(ROOT_DIR, "02-TELEGRAM_BOT")
     WHATSAPP_BOT_DIR: str = os.path.join(ROOT_DIR, "01-WHATSAPP_BOT")
 
-    # AI Configuration (Google GenAI)
+    # AI Configuration (Google GenAI & Mistral AI)
     GEMINI_API_KEY: Optional[str] = os.getenv("GEMINI_API_KEY")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+    AI_PROVIDER_MODE: str = os.getenv("AI_PROVIDER_MODE", "MODE_MISTRAL")
+    MISTRAL_API_KEY: Optional[str] = os.getenv("MISTRAL_API_KEY")
+    MISTRAL_MODEL: str = os.getenv("MISTRAL_MODEL", "open-mistral-nemo")
+    MISTRAL_CODE_MODEL: str = os.getenv("MISTRAL_CODE_MODEL", "codestral-latest")
+    MISTRAL_ENDPOINT: str = os.getenv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1")
 
     # Telegram Bot Settings
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
