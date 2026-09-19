@@ -3,7 +3,7 @@ name: vendor-invoice-reconciliation
 description: Automatically synthesized procedural rule for finance workflow
 version: 1.0.0
 standard: agentskills.io/v1
-created_at: "2026-09-19 11:44:44"
+created_at: "2026-09-19 15:52:20"
 turns_analyzed: 5
 ---
 

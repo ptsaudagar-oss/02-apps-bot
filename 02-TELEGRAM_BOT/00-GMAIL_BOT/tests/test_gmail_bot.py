@@ -37,6 +37,7 @@ class TestGmailBotModule(unittest.TestCase):
     def test_gmail_service_simulation(self):
         """Test mock inbox fetching, detail retrieval, and mark-as-read in simulation mode."""
         svc = GmailService()
+        svc.app_password = ""  # Force simulation mode for unit isolation
         emails = svc.get_unread_emails(limit=5)
         self.assertIsInstance(emails, list)
         self.assertGreater(len(emails), 0, "Simulation inbox should contain seed emails.")
@@ -58,7 +59,7 @@ class TestGmailBotModule(unittest.TestCase):
     def test_gmail_send_simulation(self):
         """Test sending email in simulation mode."""
         svc = GmailService()
-        success, msg = svc.send_email("recipient@test.com", "Testing APPS_BOT", "Content body here.")
+        success, msg = svc.send_email("recipient@test.com", "Testing APPS_BOT", "Content body here.", force_simulation=True)
         self.assertTrue(success)
         self.assertIn("simulated", msg.lower())
 

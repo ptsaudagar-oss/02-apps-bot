@@ -209,7 +209,11 @@ class GmailService:
             msg["Subject"] = subject
             msg.attach(MIMEText(body, "plain", "utf-8"))
 
-            server = smtplib.SMTP_SSL(GMAIL_SMTP_SERVER, GMAIL_SMTP_PORT, timeout=15)
+            if GMAIL_SMTP_PORT == 465:
+                server = smtplib.SMTP_SSL(GMAIL_SMTP_SERVER, GMAIL_SMTP_PORT, timeout=15)
+            else:
+                server = smtplib.SMTP(GMAIL_SMTP_SERVER, GMAIL_SMTP_PORT, timeout=15)
+                server.starttls()
             server.login(self.email_address, self.app_password)
             server.send_message(msg)
             server.quit()

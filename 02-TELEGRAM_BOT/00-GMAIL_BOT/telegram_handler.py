@@ -8,6 +8,7 @@ Context Injection Sources:
   - USER.md §1: Owner Attribution → response footer
 """
 
+import html
 import httpx
 from typing import Dict, Any, Optional, List, Tuple
 from core.config import settings
@@ -33,7 +34,7 @@ class TelegramHandler:
     """Async Telegram API Handler and Message Dispatcher."""
 
     def __init__(self, token: Optional[str] = None):
-        self.token = token or settings.TELEGRAM_BOT_TOKEN
+        self.token = token if token is not None else settings.TELEGRAM_BOT_TOKEN
         self.api_url = f"https://api.telegram.org/bot{self.token}"
         self.client = httpx.AsyncClient(timeout=30.0)
 
@@ -74,6 +75,17 @@ class TelegramHandler:
             telemetry_hub.record_latency("telegram", "/sendMessage", elapsed_ms, resp.status_code)
             if resp.status_code == 200:
                 return True
+            elif resp.status_code == 400 and "can't parse entities" in resp.text and payload.get("parse_mode"):
+                logger.warning(f"Telegram entity parse error: {resp.text}. Retrying with plain text fallback...")
+                fallback_payload = dict(payload)
+                fallback_payload.pop("parse_mode", None)
+                fb_resp = await self.client.post(f"{self.api_url}/sendMessage", json=fallback_payload)
+                if fb_resp.status_code == 200:
+                    logger.info("Telegram plain text fallback delivered successfully.")
+                    return True
+                else:
+                    logger.error(f"Fallback plain text send error {fb_resp.status_code}: {fb_resp.text}")
+                    return False
             else:
                 logger.error(f"Telegram API error {resp.status_code}: {resp.text}")
                 return False
@@ -183,18 +195,19 @@ class TelegramHandler:
                 await self.send_message(chat_id, "⚠️ Format salah. Gunakan: <code>/summarize &lt;ID_EMAIL&gt;</code>")
                 return
 
+            safe_args = html.escape(args.strip())
             email_item = gmail_service.get_email_details(args.strip())
             if not email_item:
-                await self.send_message(chat_id, f"❌ Email dengan ID <code>{args}</code> tidak ditemukan.")
+                await self.send_message(chat_id, f"❌ Email dengan ID <code>{safe_args}</code> tidak ditemukan.")
                 return
 
-            await self.send_message(chat_id, f"⏳ <i>Sedang menganalisis & meringkas email ID {args}...</i>")
+            await self.send_message(chat_id, f"⏳ <i>Sedang menganalisis & meringkas email ID {safe_args}...</i>")
             summary = ai_helper.summarize_text(email_item["body"])
             reply_text = (
                 f"⚡ <b>Ringkasan Eksekutif AI</b>\n"
-                f"<b>Subjek:</b> {email_item['subject']}\n"
-                f"<b>Dari:</b> {email_item['from']}\n\n"
-                f"📋 <b>Hasil Analisis:</b>\n{summary}"
+                f"<b>Subjek:</b> {html.escape(str(email_item.get('subject', '')))}\n"
+                f"<b>Dari:</b> {html.escape(str(email_item.get('from', '')))}\n\n"
+                f"📋 <b>Hasil Analisis:</b>\n{html.escape(str(summary))}"
             )
             await self.send_message(chat_id, reply_text)
 
@@ -203,17 +216,18 @@ class TelegramHandler:
                 await self.send_message(chat_id, "⚠️ Format salah. Gunakan: <code>/draft &lt;ID_EMAIL&gt;</code>")
                 return
 
+            safe_args = html.escape(args.strip())
             email_item = gmail_service.get_email_details(args.strip())
             if not email_item:
-                await self.send_message(chat_id, f"❌ Email dengan ID <code>{args}</code> tidak ditemukan.")
+                await self.send_message(chat_id, f"❌ Email dengan ID <code>{safe_args}</code> tidak ditemukan.")
                 return
 
             draft = ai_helper.draft_reply(email_item["subject"], email_item["body"])
             reply_text = (
                 f"📝 <b>Draf Balasan AI</b>\n"
-                f"<b>Untuk:</b> {email_item['from']}\n"
-                f"<b>Re:</b> {email_item['subject']}\n\n"
-                f"<code>{draft}</code>"
+                f"<b>Untuk:</b> {html.escape(str(email_item.get('from', '')))}\n"
+                f"<b>Re:</b> {html.escape(str(email_item.get('subject', '')))}\n\n"
+                f"<code>{html.escape(str(draft))}</code>"
             )
             await self.send_message(chat_id, reply_text)
 
@@ -254,14 +268,14 @@ class TelegramHandler:
             to_addr, subj, body_msg = parts[0], parts[1], parts[2]
             success, msg_result = gmail_service.send_email(to_addr, subj, body_msg)
             if success:
-                await self.send_message(chat_id, f"✅ <b>Berhasil Dikirim!</b>\nKe: <code>{to_addr}</code>\nSubjek: {subj}")
+                await self.send_message(chat_id, f"✅ <b>Berhasil Dikirim!</b>\nKe: <code>{html.escape(to_addr)}</code>\nSubjek: {html.escape(subj)}")
             else:
-                await self.send_message(chat_id, f"❌ <b>Gagal Mengirim:</b> {msg_result}")
+                await self.send_message(chat_id, f"❌ <b>Gagal Mengirim:</b> {html.escape(str(msg_result))}")
 
         else:
             await self.send_message(
                 chat_id,
-                f"❓ Perintah <code>{base_cmd}</code> tidak dikenali. Ketik <code>/help</code> untuk melihat daftar perintah."
+                f"❓ Perintah <code>{html.escape(base_cmd)}</code> tidak dikenali. Ketik <code>/help</code> untuk melihat daftar perintah."
             )
 
     async def handle_callback(
@@ -284,10 +298,10 @@ class TelegramHandler:
                 summary = ai_helper.summarize_text(email_item["body"])
                 gmail_url = self._generate_gmail_url(email_item)
                 resp = (
-                    f"⚡ <b>Ringkasan AI Email #{target_id}</b>\n"
-                    f"<b>Subjek:</b> {email_item['subject']}\n"
-                    f"<b>Akun:</b> <code>{email_item.get('account', '-')}</code>\n\n"
-                    f"{summary}\n\n"
+                    f"⚡ <b>Ringkasan AI Email #{html.escape(target_id)}</b>\n"
+                    f"<b>Subjek:</b> {html.escape(str(email_item.get('subject', '')))}\n"
+                    f"<b>Akun:</b> <code>{html.escape(str(email_item.get('account', '-')))}</code>\n\n"
+                    f"{html.escape(str(summary))}\n\n"
                     f"🔗 <a href='{gmail_url}'>Buka Email Ini Langsung di Gmail</a>"
                 )
                 summary_keyboard = {
@@ -300,15 +314,15 @@ class TelegramHandler:
                 }
                 await self.send_message(chat_id, resp, reply_markup=summary_keyboard)
             else:
-                await self.send_message(chat_id, f"❌ Email #{target_id} tidak ditemukan.")
+                await self.send_message(chat_id, f"❌ Email #{html.escape(target_id)} tidak ditemukan.")
 
         elif action == "draft":
             email_item = gmail_service.get_email_details(target_id)
             if email_item:
                 draft = ai_helper.draft_reply(email_item["subject"], email_item["body"])
                 resp = (
-                    f"📝 <b>Draf Balasan AI untuk #{target_id}:</b>\n\n"
-                    f"<code>{draft}</code>"
+                    f"📝 <b>Draf Balasan AI untuk #{html.escape(target_id)}:</b>\n\n"
+                    f"<code>{html.escape(str(draft))}</code>"
                 )
                 await self.send_message(chat_id, resp)
 
@@ -328,9 +342,9 @@ class TelegramHandler:
             resp = (
                 f"✅ <b>AKSI DISETUJUI & DIPROSES!</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"• <b>Target:</b> <code>{sender_to}</code>\n"
+                f"• <b>Target:</b> <code>{html.escape(str(sender_to))}</code>\n"
                 f"• <b>Status:</b> Persetujuan Resmi Terkirim (HTTP 200 OK)\n"
-                f"• <b>Log ID:</b> <code>ACK-{target_id}</code>\n"
+                f"• <b>Log ID:</b> <code>ACK-{html.escape(target_id)}</code>\n"
                 f"• <b>Kotak Masuk:</b> Ditandai Telah Selesai Dibaca\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━"
             )
@@ -344,9 +358,9 @@ class TelegramHandler:
             resp = (
                 f"❌ <b>TRANSAKSI DITOLAK / DIBATALKAN!</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━\n"
-                f"• <b>Target:</b> <code>{sender_to}</code>\n"
+                f"• <b>Target:</b> <code>{html.escape(str(sender_to))}</code>\n"
                 f"• <b>Status:</b> Transaksi Dibatalkan oleh Pengawas Sistem (HITL)\n"
-                f"• <b>Log ID:</b> <code>REJ-{target_id}</code>\n"
+                f"• <b>Log ID:</b> <code>REJ-{html.escape(target_id)}</code>\n"
                 f"━━━━━━━━━━━━━━━━━━━━━━━"
             )
             await self.send_message(chat_id, resp)
@@ -354,9 +368,9 @@ class TelegramHandler:
         elif action == "read":
             success = gmail_service.mark_as_read(target_id)
             if success:
-                await self.send_message(chat_id, f"✅ Email ID <code>{target_id}</code> ditandai telah dibaca.")
+                await self.send_message(chat_id, f"✅ Email ID <code>{html.escape(target_id)}</code> ditandai telah dibaca.")
             else:
-                await self.send_message(chat_id, f"⚠️ Gagal menandai email ID <code>{target_id}</code>.")
+                await self.send_message(chat_id, f"⚠️ Gagal menandai email ID <code>{html.escape(target_id)}</code>.")
 
         elif action == "refresh":
             await self.handle_command(chat_id, "/unread")
@@ -378,12 +392,19 @@ class TelegramHandler:
         account_tag = account_meta.get("tag", "[📧 GMAIL]")
         gmail_url = self._generate_gmail_url(email_item)
 
+        safe_tag = html.escape(str(account_tag))
+        safe_subject = html.escape(str(email_item.get("subject", "(Tanpa Subjek)")))
+        safe_from = html.escape(str(email_item.get("from", "(Pengirim Tidak Dikenal)")))
+        safe_to = html.escape(str(target_account))
+        safe_date = html.escape(str(email_item.get("date", "Hari ini")))
+        safe_snippet = html.escape(str(email_item.get("snippet", "")))
+
         text = (
-            f"📨 <b>{account_tag} {email_item['subject']}</b>\n"
-            f"👤 <i>Dari: {email_item['from']}</i>\n"
-            f"📥 <i>Ke: <code>{target_account}</code></i>\n"
-            f"📅 <code>{email_item.get('date', 'Hari ini')}</code>\n\n"
-            f"💬 {email_item['snippet']}..."
+            f"📨 <b>{safe_tag} {safe_subject}</b>\n"
+            f"👤 <i>Dari: {safe_from}</i>\n"
+            f"📥 <i>Ke: <code>{safe_to}</code></i>\n"
+            f"📅 <code>{safe_date}</code>\n\n"
+            f"💬 {safe_snippet}..."
         )
         eid = email_item["id"]
 
