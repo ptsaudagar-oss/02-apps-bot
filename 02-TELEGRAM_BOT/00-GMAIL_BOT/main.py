@@ -9,7 +9,7 @@ import os
 import sys
 import time
 from datetime import datetime
-from typing import Set, Dict, Any, List, Optional
+from typing import Set, Dict, Any, List
 
 CATEGORY_STREAM_LIMIT = 10
 TOTAL_STREAM_LIMIT = 20

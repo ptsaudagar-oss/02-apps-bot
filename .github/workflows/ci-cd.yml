@@ -27,7 +27,7 @@ jobs:
 
       - name: "Execute Master CLI QC Suite"
         run: |
-          python apps_bot_manager.py test
+          python -u apps_bot_manager.py test
 
       - name: "Execute Phase 4 & Phase 5 Audit Verification"
         run: |

@@ -73,7 +73,7 @@ class TelegramWABridgeListener:
             cb = update["callback_query"]
             cb_id = cb["id"]
             data = cb.get("data", "")
-            from_user = cb.get("from", {}).get("first_name", "Akang")
+            cb.get("from", {}).get("first_name", "Akang")
             message = cb.get("message", {})
             chat_id = message.get("chat", {}).get("id")
             thread_id = message.get("message_thread_id")

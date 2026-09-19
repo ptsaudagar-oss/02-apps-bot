@@ -5,6 +5,7 @@ Validates email fetching, command handling, AI summarization integration, and li
 
 import os
 import sys
+import json
 import asyncio
 import unittest
 
@@ -165,7 +166,7 @@ class TestGmailBotModule(unittest.TestCase):
 
     def test_sliding_window_buffer(self):
         """Test that stream window enforces max 10 Primary + max 10 Update = Total 20 FIFO items."""
-        from unittest.mock import patch, AsyncMock, MagicMock
+        from unittest.mock import patch, AsyncMock
 
         engine = TelegramGmailBotEngine()
         engine._stream_window = []

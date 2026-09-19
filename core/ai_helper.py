@@ -13,7 +13,6 @@ from core import context_loader
 from core.privacy_enclave import privacy_enclave
 from core.telemetry import telemetry_hub
 import requests
-import json
 
 logger = setup_logger("AI_HELPER")
 

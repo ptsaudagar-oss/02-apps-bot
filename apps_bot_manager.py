@@ -115,14 +115,13 @@ def cmd_test():
 
     all_passed = True
     for label, script_path in test_scripts:
-        print(f"{Colors.CYAN}▶ Pengujian: {label}{Colors.RESET}")
-        print(f"  Script: {script_path}")
-        result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, encoding="utf-8", errors="replace")
+        print(f"{Colors.CYAN}▶ Pengujian: {label}{Colors.RESET}", flush=True)
+        print(f"  Script: {script_path}", flush=True)
+        result = subprocess.run([sys.executable, "-u", script_path])
         if result.returncode == 0:
-            print(f"  {Colors.GREEN}✓ PASSED (Code 0){Colors.RESET}\n")
+            print(f"  {Colors.GREEN}✓ PASSED (Code 0){Colors.RESET}\n", flush=True)
         else:
-            print(f"  {Colors.RED}✗ FAILED (Code {result.returncode}){Colors.RESET}")
-            print(f"  Output:\n{result.stderr}\n{result.stdout}\n")
+            print(f"  {Colors.RED}✗ FAILED (Code {result.returncode}){Colors.RESET}\n", flush=True)
             all_passed = False
 
     print("=" * 70)
