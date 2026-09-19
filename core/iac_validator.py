@@ -7,7 +7,6 @@ Audits declarative fly.toml / koyeb.yaml / container manifests to verify:
 """
 
 import os
-import yaml
 from typing import Dict, Any, List, Tuple
 from core.config import ROOT_DIR
 from core.logger import setup_logger

@@ -17,6 +17,7 @@ from core import context_loader
 from core.privacy_enclave import privacy_enclave
 from core.telemetry import telemetry_hub
 import time
+import urllib.parse
 try:
     from .gmail_service import gmail_service
 except ImportError:
@@ -281,12 +282,23 @@ class TelegramHandler:
             email_item = gmail_service.get_email_details(target_id)
             if email_item:
                 summary = ai_helper.summarize_text(email_item["body"])
+                gmail_url = self._generate_gmail_url(email_item)
                 resp = (
                     f"⚡ <b>Ringkasan AI Email #{target_id}</b>\n"
-                    f"<b>Subjek:</b> {email_item['subject']}\n\n"
-                    f"{summary}"
+                    f"<b>Subjek:</b> {email_item['subject']}\n"
+                    f"<b>Akun:</b> <code>{email_item.get('account', '-')}</code>\n\n"
+                    f"{summary}\n\n"
+                    f"🔗 <a href='{gmail_url}'>Buka Email Ini Langsung di Gmail</a>"
                 )
-                await self.send_message(chat_id, resp)
+                summary_keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "🌐 Buka di Gmail", "url": gmail_url},
+                            {"text": "📝 Buat Draf Balasan", "callback_data": f"draft:{target_id}"}
+                        ]
+                    ]
+                }
+                await self.send_message(chat_id, resp, reply_markup=summary_keyboard)
             else:
                 await self.send_message(chat_id, f"❌ Email #{target_id} tidak ditemukan.")
 
@@ -349,15 +361,27 @@ class TelegramHandler:
         elif action == "refresh":
             await self.handle_command(chat_id, "/unread")
 
+    def _generate_gmail_url(self, email_item: Dict[str, Any]) -> str:
+        """Constructs an authentic direct deep-link into Gmail web/mobile app."""
+        account = email_item.get("account") or email_item.get("to") or "0"
+        subject = email_item.get("subject", "")
+        # Clean subject for exact search
+        clean_subj = subject.replace('"', '').strip()
+        encoded_query = urllib.parse.quote(f'subject:"{clean_subj}"')
+        return f"https://mail.google.com/mail/u/?authuser={account}#search/{encoded_query}"
+
     def _build_email_card(self, email_item: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """Constructs visually appealing HTML card with account badges and actionable inline buttons."""
         sender_email = email_item.get("from", "")
-        account_meta = privacy_enclave.get_account_category(email_item.get("account", sender_email))
+        target_account = email_item.get("account", sender_email)
+        account_meta = privacy_enclave.get_account_category(target_account)
         account_tag = account_meta.get("tag", "[📧 GMAIL]")
+        gmail_url = self._generate_gmail_url(email_item)
 
         text = (
             f"📨 <b>{account_tag} {email_item['subject']}</b>\n"
             f"👤 <i>Dari: {email_item['from']}</i>\n"
+            f"📥 <i>Ke: <code>{target_account}</code></i>\n"
             f"📅 <code>{email_item.get('date', 'Hari ini')}</code>\n\n"
             f"💬 {email_item['snippet']}..."
         )
@@ -373,6 +397,7 @@ class TelegramHandler:
                         {"text": "⚙️ Proses Pesanan", "callback_data": f"draft:{eid}"}
                     ],
                     [
+                        {"text": "🌐 Buka di Gmail", "url": gmail_url},
                         {"text": "✅ Tandai Selesai", "callback_data": f"read:{eid}"}
                     ]
                 ]
@@ -384,6 +409,9 @@ class TelegramHandler:
                     [
                         {"text": "🛡️ HITL Otorisasi", "callback_data": f"draft:{eid}"},
                         {"text": "🔒 Arsip Enclave", "callback_data": f"read:{eid}"}
+                    ],
+                    [
+                        {"text": "🌐 Buka di Gmail Enclave", "url": gmail_url}
                     ]
                 ]
             }
@@ -396,6 +424,7 @@ class TelegramHandler:
                         {"text": "📝 Draf Balasan", "callback_data": f"draft:{eid}"}
                     ],
                     [
+                        {"text": "🌐 Buka di Gmail", "url": gmail_url},
                         {"text": "✅ Tandai Dibaca", "callback_data": f"read:{eid}"}
                     ]
                 ]

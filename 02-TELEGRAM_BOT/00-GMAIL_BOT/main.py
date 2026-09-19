@@ -81,7 +81,7 @@ class TelegramGmailBotEngine(BaseBotEngine):
     async def _handle_http_health_check(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         """Handles incoming HTTP GET health probes from Cloud Platforms / Container environments."""
         try:
-            line = await reader.readline()
+            await reader.readline()
             while True:
                 header = await reader.readline()
                 if not header or header == b"\r\n":
