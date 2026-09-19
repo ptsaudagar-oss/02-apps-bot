@@ -1,1 +1,50 @@
-[]
+[
+  {
+    "email_id": "6163",
+    "chat_id": "7828326094",
+    "message_id": 304,
+    "subject": "[ptsaudagar-oss/02-apps-bot] Run failed: APPS_BOT Sovereign CI/CD\r\n Pipeline - main (b2e587c)",
+    "category": "UPDATES",
+    "timestamp": 1789810563.584434
+  },
+  {
+    "email_id": "6164",
+    "chat_id": "7828326094",
+    "message_id": 305,
+    "subject": "[ptsaudagar-oss/02-apps-bot] Run failed: APPS_BOT Sovereign CI/CD\r\n Pipeline - main (be710d6)",
+    "category": "UPDATES",
+    "timestamp": 1789810671.7264059
+  },
+  {
+    "email_id": "6165",
+    "chat_id": "7828326094",
+    "message_id": 309,
+    "subject": "[ptsaudagar-oss/02-apps-bot] Run failed: APPS_BOT Sovereign CI/CD\r\n Pipeline - main (f10bcab)",
+    "category": "UPDATES",
+    "timestamp": 1789812579.0183938
+  },
+  {
+    "email_id": "6166",
+    "chat_id": "7828326094",
+    "message_id": 314,
+    "subject": "[ptsaudagar-oss/02-apps-bot] Run failed: APPS_BOT Sovereign CI/CD\r\n Pipeline - main (b19c5e2)",
+    "category": "UPDATES",
+    "timestamp": 1789815912.8524816
+  },
+  {
+    "email_id": "6167",
+    "chat_id": "7828326094",
+    "message_id": 317,
+    "subject": "[ptsaudagar-oss/02-apps-bot] Run failed: APPS_BOT Sovereign CI/CD\r\n Pipeline - main (4c3a7d7)",
+    "category": "UPDATES",
+    "timestamp": 1789819352.6945608
+  },
+  {
+    "email_id": "6168",
+    "chat_id": "7828326094",
+    "message_id": 318,
+    "subject": "424699 adalah kode Facebook Anda",
+    "category": "UPDATES",
+    "timestamp": 1789819497.1412952
+  }
+]

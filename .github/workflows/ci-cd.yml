@@ -27,7 +27,10 @@ jobs:
 
       - name: "Execute Master CLI QC Suite"
         run: |
-          python -u apps_bot_manager.py test
+          python -u apps_bot_manager.py test 2>&1 | tee test_output.log || {
+            echo "::error::$(tail -n 25 test_output.log)"
+            exit 1
+          }
 
       - name: "Execute Phase 4 & Phase 5 Audit Verification"
         run: |
