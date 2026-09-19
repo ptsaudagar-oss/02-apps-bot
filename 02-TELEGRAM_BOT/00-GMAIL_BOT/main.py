@@ -79,10 +79,14 @@ class TelegramGmailBotEngine(BaseBotEngine):
         if os.path.exists(STREAM_STATE_PATH):
             try:
                 with open(STREAM_STATE_PATH, "r", encoding="utf-8") as f:
-                    self._stream_window = json.load(f)
-                    for entry in self._stream_window:
-                        if "email_id" in entry:
-                            self._notified_email_ids.add(str(entry["email_id"]))
+                    content = f.read().strip()
+                    if content:
+                        self._stream_window = json.loads(content)
+                        for entry in self._stream_window:
+                            if "email_id" in entry:
+                                self._notified_email_ids.add(str(entry["email_id"]))
+                    else:
+                        self._stream_window = []
                 logger.info(f"Loaded {len(self._stream_window)} active stream window card(s) from state.")
             except Exception as e:
                 logger.debug(f"Could not load stream state: {e}")
