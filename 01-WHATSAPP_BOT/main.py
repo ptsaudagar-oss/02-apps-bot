@@ -118,8 +118,12 @@ async def handle_webhook(request: Request):
 
     messages = whatsapp_handler.parse_incoming_webhook(payload)
     for msg in messages:
-        # Asynchronously process each message
-        asyncio.create_task(whatsapp_handler.process_message(msg))
+        if msg.get("from_me"):
+            # Pesan berasal dari ketikan Akang langsung di HP -> sinkronkan ke Telegram (Two-Way Sync)
+            asyncio.create_task(whatsapp_handler.sync_outbound_from_phone(msg["sender"], msg["body"]))
+        else:
+            # Pesan masuk dari customer
+            asyncio.create_task(whatsapp_handler.process_message(msg))
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000.0
     telemetry_hub.record_latency("whatsapp", "/webhook[POST]", elapsed_ms, 200)

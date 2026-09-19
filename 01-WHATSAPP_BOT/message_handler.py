@@ -137,18 +137,72 @@ class WhatsAppMessageHandler:
                             "timestamp": timestamp
                         })
 
-        # 2. Simplified Bridge / Custom Gateway Format
-        elif "sender" in payload and "body" in payload:
+        # 2. Simplified Bridge / Custom Gateway Format (Supports both Inbound & Outbound from HP)
+        elif ("sender" in payload or "recipient" in payload or "to" in payload) and "body" in payload:
+            from_me = bool(payload.get("from_me") or payload.get("fromMe") or payload.get("outbound"))
+            # Jika dari HP Akang, targetnya adalah si recipient/to
+            target_contact = str(payload.get("recipient") or payload.get("to") or payload.get("sender"))
             parsed_messages.append({
-                "sender": str(payload.get("sender")),
+                "sender": target_contact,
                 "sender_name": str(payload.get("sender_name", "User")),
                 "message_id": str(payload.get("id", "msg_mock")),
                 "type": str(payload.get("type", "text")),
                 "body": str(payload.get("body", "")).strip(),
-                "timestamp": str(payload.get("timestamp", ""))
+                "timestamp": str(payload.get("timestamp", "")),
+                "from_me": from_me
             })
 
         return parsed_messages
+
+    async def sync_outbound_from_phone(self, recipient_phone: str, text: str) -> None:
+        """
+        Passive Sync Engine:
+        Mirroring outbound messages sent directly from the owner's WhatsApp mobile app to Telegram!
+        100% Anti-Banned Safe (Passive Listener).
+        """
+        try:
+            forward_bot_token = settings.TELEGRAM_WA_FORWARD_BOT_TOKEN or settings.TELEGRAM_BOT_TOKEN
+            target_forum_id = getattr(settings, "TELEGRAM_WA_FORUM_GROUP_ID", None)
+            if not forward_bot_token or not target_forum_id:
+                return
+
+            clean_phone = "".join(filter(str.isdigit, str(recipient_phone)))
+            topic_id = await self.get_or_create_forum_topic(
+                forward_bot_token=forward_bot_token,
+                group_id=str(target_forum_id),
+                sender_phone=clean_phone,
+                sender_name=f"Customer +{clean_phone}"
+            )
+
+            # Tandai status inbox di Telegram sudah direspon/read
+            session_manager.mark_inbox_read(clean_phone)
+
+            outbound_card = (
+                f"📤 <b>[BALASAN DARI HP AKANG]</b> 📱\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Ke:</b> <code>+{clean_phone}</code>\n"
+                f"• <b>Pesan:</b> {text}\n"
+                f"• <b>Waktu:</b> <code>{time.strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"✨ <i>Two-Way Mobile Synced</i>"
+            )
+
+            payload = {
+                "chat_id": target_forum_id,
+                "text": outbound_card,
+                "parse_mode": "HTML"
+            }
+            if topic_id:
+                payload["message_thread_id"] = topic_id
+
+            await self.client.post(
+                f"https://api.telegram.org/bot{forward_bot_token}/sendMessage",
+                json=payload,
+                timeout=5.0
+            )
+            logger.info(f"Outbound message from mobile synced to Telegram topic {topic_id} for +{clean_phone}")
+        except Exception as e:
+            logger.error(f"Failed to sync mobile outbound message to Telegram: {e}")
 
     async def process_message(self, message: Dict[str, Any]) -> str:
         """
