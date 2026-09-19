@@ -99,6 +99,23 @@ class TelegramWABridgeListener:
                 await self.client.post(f"{self.api_url}/sendMessage", json=payload)
                 return
 
+            elif data.startswith("read_tele:"):
+                target_phone = data.split("read_tele:")[1]
+                # Tandai sudah dibaca di database lokal (Anti-Banned Safe)
+                session_manager.mark_inbox_read(target_phone)
+                await self._answer_callback(cb_id, text=f"Ditandai Selesai Dibaca (Anti-Banned Safe) ✅")
+                
+                confirm_text = f"👁️ <i>Chat dari +{target_phone} telah ditandai SELESAI DIBACA di sistem Telegram. Status WhatsApp tetap aman & privat.</i>"
+                read_payload = {
+                    "chat_id": chat_id,
+                    "text": confirm_text,
+                    "parse_mode": "HTML"
+                }
+                if thread_id:
+                    read_payload["message_thread_id"] = thread_id
+                await self.client.post(f"{self.api_url}/sendMessage", json=read_payload)
+                return
+
         # 2. Handle Text Message inside Topic or Direct Chat
         elif "message" in update and "text" in update["message"]:
             msg = update["message"]
@@ -111,7 +128,32 @@ class TelegramWABridgeListener:
             if sender_user.get("is_bot"):
                 return
 
-            # Abaikan perintah /start dsb
+            # Perintah /inbox atau /unread untuk cek daftar chat pelanggan yang belum dibalas
+            if text in ("/inbox", "/unread", "/list"):
+                unreads = session_manager.get_unread_inbox()
+                if not unreads:
+                    inbox_summary = "✅ <b>Semua pesan WhatsApp telah dibaca/direspon!</b>\nTidak ada antrean pending saat ini."
+                else:
+                    lines = [f"📬 <b>DAFTAR PESAN WHATSAPP BELUM DIBALAS ({len(unreads)}):</b>\n"]
+                    for idx, item in enumerate(unreads, 1):
+                        lines.append(
+                            f"{idx}. <b>+{item['phone']}</b> ({item.get('name', 'User')})\n"
+                            f"   💬 <i>\"{item.get('last_message', '')[:60]}\"</i>\n"
+                            f"   ⏰ <code>{item.get('updated_at', '')}</code>"
+                        )
+                    inbox_summary = "\n\n".join(lines)
+
+                reply_inbox = {
+                    "chat_id": chat_id,
+                    "text": inbox_summary,
+                    "parse_mode": "HTML"
+                }
+                if thread_id:
+                    reply_inbox["message_thread_id"] = thread_id
+                await self.client.post(f"{self.api_url}/sendMessage", json=reply_inbox)
+                return
+
+            # Abaikan perintah lainnya
             if text.startswith("/"):
                 return
 
@@ -126,11 +168,15 @@ class TelegramWABridgeListener:
                 # Kirim ke WhatsApp customer via WhatsAppMessageHandler
                 success = await self.whatsapp_handler.send_message(target_phone, text)
                 
+                # Begitu admin balas, otomatis status unread di-resolve jadi READ
+                session_manager.mark_inbox_read(target_phone)
+
                 # Konfirmasi ke Admin di Telegram Topic
                 status_icon = "✅" if success else "❌"
                 status_msg = (
                     f"{status_icon} <b>Pesan Terkirim ke WhatsApp</b> <code>+{target_phone}</code>:\n"
-                    f"<i>\"{text}\"</i>"
+                    f"<i>\"{text}\"</i>\n\n"
+                    f"🏷️ <i>Status: RESOLVED & READ</i>"
                 )
                 reply_payload = {
                     "chat_id": chat_id,

@@ -9,6 +9,7 @@ import json
 import os
 
 TOPIC_STORE_PATH = os.path.join(os.path.dirname(__file__), "topic_store.json")
+INBOX_STATE_PATH = os.path.join(os.path.dirname(__file__), "inbox_state.json")
 
 
 class UserSession:
@@ -97,6 +98,65 @@ class SessionManager:
         try:
             with open(TOPIC_STORE_PATH, "w", encoding="utf-8") as f:
                 json.dump(store, f, indent=2)
+        except Exception:
+            pass
+
+    # ==========================================
+    # Anti-Banned Safe Inbox Unread State Manager
+    # ==========================================
+    def record_inbound_message(self, phone_number: str, sender_name: str, message_text: str, topic_id: Optional[int] = None) -> None:
+        """Records incoming WhatsApp message as UNREAD without triggering WhatsApp read-receipts."""
+        clean_number = str(phone_number).strip().replace("+", "").replace("-", "")
+        state = self._load_inbox_state()
+        if clean_number not in state:
+            state[clean_number] = {
+                "phone": clean_number,
+                "name": sender_name,
+                "topic_id": topic_id,
+                "status": "UNREAD",
+                "unread_count": 0,
+                "last_message": message_text,
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+        state[clean_number]["name"] = sender_name
+        state[clean_number]["status"] = "UNREAD"
+        state[clean_number]["unread_count"] = state[clean_number].get("unread_count", 0) + 1
+        state[clean_number]["last_message"] = message_text
+        state[clean_number]["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        if topic_id:
+            state[clean_number]["topic_id"] = topic_id
+        self._save_inbox_state(state)
+
+    def mark_inbox_read(self, phone_number: str) -> bool:
+        """Marks a customer thread as READ internally in Telegram without alerting customer."""
+        clean_number = str(phone_number).strip().replace("+", "").replace("-", "")
+        state = self._load_inbox_state()
+        if clean_number in state:
+            state[clean_number]["status"] = "READ"
+            state[clean_number]["unread_count"] = 0
+            state[clean_number]["read_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            self._save_inbox_state(state)
+            return True
+        return False
+
+    def get_unread_inbox(self) -> List[Dict[str, Any]]:
+        """Returns list of all conversations currently in UNREAD status."""
+        state = self._load_inbox_state()
+        return [data for data in state.values() if data.get("status") == "UNREAD"]
+
+    def _load_inbox_state(self) -> Dict[str, Any]:
+        if os.path.exists(INBOX_STATE_PATH):
+            try:
+                with open(INBOX_STATE_PATH, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+
+    def _save_inbox_state(self, state: Dict[str, Any]) -> None:
+        try:
+            with open(INBOX_STATE_PATH, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2)
         except Exception:
             pass
 

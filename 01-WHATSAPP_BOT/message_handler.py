@@ -188,7 +188,8 @@ class WhatsAppMessageHandler:
                 wa_keyboard = {
                     "inline_keyboard": [
                         [
-                            {"text": "✍️ Balas Langsung di Tele", "callback_data": f"reply_tele:{clean_phone}"}
+                            {"text": "✍️ Balas Langsung di Tele", "callback_data": f"reply_tele:{clean_phone}"},
+                            {"text": "👁️ Tandai Sudah Dibaca", "callback_data": f"read_tele:{clean_phone}"}
                         ],
                         [
                             {"text": "💬 Balas via WA Apps", "url": wa_direct_url}
@@ -205,6 +206,15 @@ class WhatsAppMessageHandler:
                         sender_phone=clean_phone,
                         sender_name=sender_name
                     )
+
+                    # Simpan status UNREAD secara lokal (100% aman anti-banned tanpa trigger WhatsApp read-receipts)
+                    session_manager.record_inbound_message(
+                        phone_number=clean_phone,
+                        sender_name=sender_name,
+                        message_text=body,
+                        topic_id=topic_id
+                    )
+
                     payload = {
                         "chat_id": target_forum_id,
                         "text": wa_forward_text,
