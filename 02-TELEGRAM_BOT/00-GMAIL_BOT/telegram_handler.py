@@ -51,14 +51,14 @@ class TelegramHandler:
         text: str,
         parse_mode: str = "HTML",
         reply_markup: Optional[Dict[str, Any]] = None
-    ) -> bool:
-        """Sends a text message via Telegram API and tracks latency."""
+    ) -> Optional[int]:
+        """Sends a text message via Telegram API and tracks latency. Returns message_id if successful."""
         start_time = time.perf_counter()
         if not self.token:
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
             telemetry_hub.record_latency("telegram", "/sendMessage[SIMULATION]", elapsed_ms, 200)
             logger.info(f"[SIMULASI TELEGRAM] Chat {chat_id} -> {text[:100]}...")
-            return True
+            return 99999
 
         payload: Dict[str, Any] = {
             "chat_id": chat_id,
@@ -74,7 +74,9 @@ class TelegramHandler:
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
             telemetry_hub.record_latency("telegram", "/sendMessage", elapsed_ms, resp.status_code)
             if resp.status_code == 200:
-                return True
+                data = resp.json()
+                msg_id = data.get("result", {}).get("message_id")
+                return msg_id if msg_id is not None else 1
             elif resp.status_code == 400 and "can't parse entities" in resp.text and payload.get("parse_mode"):
                 logger.warning(f"Telegram entity parse error: {resp.text}. Retrying with plain text fallback...")
                 fallback_payload = dict(payload)
@@ -82,17 +84,37 @@ class TelegramHandler:
                 fb_resp = await self.client.post(f"{self.api_url}/sendMessage", json=fallback_payload)
                 if fb_resp.status_code == 200:
                     logger.info("Telegram plain text fallback delivered successfully.")
-                    return True
+                    fb_data = fb_resp.json()
+                    fb_msg_id = fb_data.get("result", {}).get("message_id")
+                    return fb_msg_id if fb_msg_id is not None else 1
                 else:
                     logger.error(f"Fallback plain text send error {fb_resp.status_code}: {fb_resp.text}")
-                    return False
+                    return None
             else:
                 logger.error(f"Telegram API error {resp.status_code}: {resp.text}")
-                return False
+                return None
         except Exception as e:
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
             telemetry_hub.record_latency("telegram", "/sendMessage[EXCEPTION]", elapsed_ms, 500)
             logger.error(f"Failed to send Telegram message: {e}")
+            return None
+
+    async def delete_message(self, chat_id: Any, message_id: int) -> bool:
+        """Deletes a message from Telegram chat to maintain sliding-window limit (e.g. 10 items)."""
+        if not self.token or not message_id or message_id == 99999:
+            return True
+
+        payload: Dict[str, Any] = {"chat_id": chat_id, "message_id": message_id}
+        try:
+            resp = await self.client.post(f"{self.api_url}/deleteMessage", json=payload)
+            if resp.status_code == 200:
+                logger.debug(f"Deleted Telegram message {message_id} in chat {chat_id}")
+                return True
+            else:
+                logger.debug(f"Delete message {message_id} responded with {resp.status_code}: {resp.text}")
+                return False
+        except Exception as e:
+            logger.debug(f"Exception deleting Telegram message {message_id}: {e}")
             return False
 
     async def answer_callback_query(self, callback_query_id: str, text: Optional[str] = None) -> bool:
@@ -162,15 +184,29 @@ class TelegramHandler:
             await self.send_message(chat_id, msg)
 
         elif base_cmd in ("/unread", "/inbox", "/cek"):
-            emails = gmail_service.get_unread_emails(limit=5)
+            emails = gmail_service.get_unread_emails(limit=10)
             if not emails:
                 await self.send_message(chat_id, "🎉 <b>Kotak Masuk Bersih!</b> Tidak ada email baru yang belum dibaca.")
                 return
 
-            await self.send_message(chat_id, f"📬 <b>Ditemukan {len(emails)} Email Belum Dibaca:</b>")
+            await self.send_message(chat_id, f"📬 <b>Ditemukan {len(emails)} Email Belum Dibaca (Maksimal 10 Terkini):</b>")
             for item in emails:
                 text_card, markup = self._build_email_card(item)
                 await self.send_message(chat_id, text_card, reply_markup=markup)
+
+        elif base_cmd in ("/clean", "/clear", "/purge", "/sapu"):
+            await self.send_message(chat_id, "⏳ <i>Sedang membersihkan kotak masuk Gmail & mereset live streaming...</i>")
+            cleaned = gmail_service.clean_all_inbox()
+            clean_text = (
+                f"🧹 <b>KOTAK MASUK BERSIH TOTAL!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"• <b>Email Dibersihkan:</b> <code>{cleaned}</code> email lama ditandai telah dibaca.\n"
+                f"• <b>Live Stream Buffer:</b> Direset (Maksimal 10 inbox).\n"
+                f"• <b>Mode Otomatis:</b> Email baru akan masuk secara realtime dan menggeser email terlama.\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"✨ <i>Kotak masuk Gmail Anda kini bersih dan siap siaga!</i>"
+            )
+            await self.send_message(chat_id, clean_text)
 
         elif base_cmd == "/status":
             connected, msg_conn = gmail_service.check_connection()
@@ -368,6 +404,8 @@ class TelegramHandler:
         elif action == "read":
             success = gmail_service.mark_as_read(target_id)
             if success:
+                if message_id:
+                    await self.delete_message(chat_id, message_id)
                 await self.send_message(chat_id, f"✅ Email ID <code>{html.escape(target_id)}</code> ditandai telah dibaca.")
             else:
                 await self.send_message(chat_id, f"⚠️ Gagal menandai email ID <code>{html.escape(target_id)}</code>.")

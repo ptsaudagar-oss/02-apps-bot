@@ -195,6 +195,41 @@ class GmailService:
             logger.error(f"Failed to mark email {email_id} as read: {e}")
             return False
 
+    def clean_inbox_backlog(self, keep_latest: int = 10) -> int:
+        """Marks old unread emails as Seen in Gmail, keeping only the specified number of newest unread emails."""
+        if not self.is_configured():
+            if len(self._mock_data) > keep_latest:
+                cleaned = len(self._mock_data) - keep_latest
+                self._mock_data = self._mock_data[:keep_latest]
+                return cleaned
+            return 0
+
+        try:
+            mail = imaplib.IMAP4_SSL(GMAIL_IMAP_SERVER, GMAIL_IMAP_PORT, timeout=15)
+            mail.login(self.email_address, self.app_password)
+            mail.select("INBOX")
+
+            status, response = mail.search(None, "UNSEEN")
+            cleaned_count = 0
+            if status == "OK" and response[0]:
+                ids = response[0].split()
+                if len(ids) > keep_latest:
+                    to_mark = ids[:-keep_latest] if keep_latest > 0 else ids
+                    range_str = f"{to_mark[0].decode()}:{to_mark[-1].decode()}"
+                    mail.store(range_str, "+FLAGS.SILENT", "\\Seen")
+                    cleaned_count = len(to_mark)
+                    logger.info(f"Cleaned {cleaned_count} old unread email(s) in Gmail, kept latest {keep_latest}.")
+
+            mail.logout()
+            return cleaned_count
+        except Exception as e:
+            logger.error(f"Error cleaning inbox backlog in Gmail: {e}")
+            return 0
+
+    def clean_all_inbox(self) -> int:
+        """Marks 100% of unread emails as Seen in Gmail."""
+        return self.clean_inbox_backlog(keep_latest=0)
+
     def send_email(self, to_address: str, subject: str, body: str, force_simulation: bool = False) -> Tuple[bool, str]:
         """Sends an email via SMTP or simulated dispatch."""
         if force_simulation or not self.is_configured():

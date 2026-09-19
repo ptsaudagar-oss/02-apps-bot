@@ -157,6 +157,40 @@ class TestGmailBotModule(unittest.TestCase):
         self.assertIn("[🔒 PRIVACY ENCLAVE]", text_owner)
         self.assertEqual(markup_owner["inline_keyboard"][0][0]["text"], "🛡️ HITL Otorisasi")
 
+    def test_sliding_window_buffer(self):
+        """Test that stream window enforces max 10 items and evicts oldest."""
+        engine = TelegramGmailBotEngine()
+        engine._stream_window = []
+
+        # Record 12 items
+        for i in range(1, 13):
+            engine._record_stream_entry(
+                email_id=str(1000 + i),
+                chat_id="999",
+                message_id=5000 + i,
+                subject=f"Email Subject {i}"
+            )
+
+        self.assertEqual(len(engine._stream_window), 12)
+
+        # Enforce sliding window (should evict 2 oldest)
+        self.loop.run_until_complete(engine._enforce_stream_window())
+
+        self.assertEqual(len(engine._stream_window), 10)
+        # Oldest remaining should be item 3
+        self.assertEqual(engine._stream_window[0]["email_id"], "1003")
+        # Newest remaining should be item 12
+        self.assertEqual(engine._stream_window[-1]["email_id"], "1012")
+
+    def test_gmail_clean_backlog(self):
+        """Test clean_inbox_backlog simulation."""
+        svc = GmailService()
+        svc.app_password = ""  # Simulation
+        svc._mock_data = [{"id": str(i), "is_read": False} for i in range(15)]
+        cleaned = svc.clean_inbox_backlog(keep_latest=10)
+        self.assertEqual(cleaned, 5)
+        self.assertEqual(len(svc._mock_data), 10)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

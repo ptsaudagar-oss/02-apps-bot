@@ -7,8 +7,12 @@ import asyncio
 import json
 import os
 import sys
+import time
 from datetime import datetime
-from typing import Set, Dict, Any
+from typing import Set, Dict, Any, List, Optional
+
+MAX_STREAM_LIMIT = 10
+STREAM_STATE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stream_state.json")
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(CURRENT_DIR, "..", ".."))
@@ -56,15 +60,60 @@ logger = setup_logger("TG_GMAIL_BOT")
 
 
 class TelegramGmailBotEngine(BaseBotEngine):
-    """Production-grade Telegram Gmail Assistant Engine."""
+    """Production-grade Telegram Gmail Assistant Engine with Sliding-Window (Max 10) Live Stream."""
 
     def __init__(self):
         super().__init__("TELEGRAM_GMAIL_BOT")
         self._notified_email_ids: Set[str] = set()
+        self._stream_window: List[Dict[str, Any]] = []
         self._polling_task: asyncio.Task = None
         self._inbox_watcher_task: asyncio.Task = None
         self._http_server = None
         self._last_update_id = 0
+        self._load_stream_state()
+
+    def _load_stream_state(self) -> None:
+        """Loads persisted active stream window state."""
+        if os.path.exists(STREAM_STATE_PATH):
+            try:
+                with open(STREAM_STATE_PATH, "r", encoding="utf-8") as f:
+                    self._stream_window = json.load(f)
+                    for entry in self._stream_window:
+                        if "email_id" in entry:
+                            self._notified_email_ids.add(str(entry["email_id"]))
+                logger.info(f"Loaded {len(self._stream_window)} active stream window card(s) from state.")
+            except Exception as e:
+                logger.debug(f"Could not load stream state: {e}")
+                self._stream_window = []
+
+    def _save_stream_state(self) -> None:
+        """Persists active stream window state."""
+        try:
+            with open(STREAM_STATE_PATH, "w", encoding="utf-8") as f:
+                json.dump(self._stream_window, f, indent=2)
+        except Exception as e:
+            logger.debug(f"Could not save stream state: {e}")
+
+    def _record_stream_entry(self, email_id: str, chat_id: Any, message_id: int, subject: str) -> None:
+        """Records a new message card in the active sliding-window buffer."""
+        self._stream_window = [e for e in self._stream_window if str(e.get("email_id")) != str(email_id)]
+        self._stream_window.append({
+            "email_id": str(email_id),
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "subject": subject,
+            "timestamp": time.time()
+        })
+        self._save_stream_state()
+
+    async def _enforce_stream_window(self) -> None:
+        """Maintains maximum 10 unread items in the live stream by evicting and shifting the oldest."""
+        while len(self._stream_window) > MAX_STREAM_LIMIT:
+            oldest = self._stream_window.pop(0)
+            logger.info(f"🔄 [SLIDING WINDOW] Evicting oldest email ID {oldest['email_id']} ('{oldest['subject']}') to maintain {MAX_STREAM_LIMIT} active cards.")
+            await telegram_handler.delete_message(oldest["chat_id"], oldest["message_id"])
+            gmail_service.mark_as_read(oldest["email_id"])
+            self._save_stream_state()
 
     def health_check(self) -> Dict[str, Any]:
         """Validates configuration tokens, Gmail status, and engine readiness."""
@@ -187,6 +236,16 @@ class TelegramGmailBotEngine(BaseBotEngine):
                         text = msg["text"]
                         user_name = msg.get("from", {}).get("first_name", "Pengguna")
                         logger.info(f"Incoming message from chat {chat_id}: {text}")
+
+                        # If user commands clean/clear/purge, delete all active stream messages from chat
+                        if text.strip().lower() in ("/clean", "/clear", "/purge", "/sapu"):
+                            logger.info("Sweeping active stream cards from chat...")
+                            for entry in self._stream_window:
+                                await telegram_handler.delete_message(entry["chat_id"], entry["message_id"])
+                            self._stream_window = []
+                            self._notified_email_ids.clear()
+                            self._save_stream_state()
+
                         await telegram_handler.handle_command(chat_id, text, user_name)
 
                     # 2. Handle inline button callback query
@@ -197,6 +256,12 @@ class TelegramGmailBotEngine(BaseBotEngine):
                         chat_id = cb["message"]["chat"]["id"] if "message" in cb else None
                         msg_id = cb["message"]["message_id"] if "message" in cb else None
                         logger.info(f"Inline callback received from chat {chat_id}: {data}")
+
+                        # If user clicks 'read:ID', remove from active sliding-window buffer
+                        if data.startswith("read:") and msg_id:
+                            self._stream_window = [e for e in self._stream_window if e.get("message_id") != msg_id]
+                            self._save_stream_state()
+
                         if chat_id:
                             await telegram_handler.handle_callback(cb_id, chat_id, data, msg_id)
 
@@ -208,25 +273,31 @@ class TelegramGmailBotEngine(BaseBotEngine):
                 await asyncio.sleep(5)
 
     async def _run_inbox_watcher(self) -> None:
-        """Monitors inbox periodically and pushes alerts for unread emails across all accounts to Telegram and WhatsApp in real time."""
-        interval = max(int(getattr(settings, "GMAIL_CHECK_INTERVAL_SECONDS", 60) or 60), 5)
-        logger.info(f"Gmail Inbox proactive watcher started (Interval: {interval}s). Real-time autonomous push across accounts (pt.saudagar, 8m.shop.online, kafnun84) ACTIVE.")
+        """Monitors inbox periodically with real-time sliding window (max 10 items)."""
+        interval = max(int(getattr(settings, "GMAIL_CHECK_INTERVAL_SECONDS", 15) or 15), 5)
+        logger.info(f"Gmail Inbox proactive watcher started (Interval: {interval}s). Real-time autonomous sliding-window (max {MAX_STREAM_LIMIT} items) ACTIVE.")
 
-        # Check existing unreads immediately on start so the bot is NOT static
+        # 1. Clean old backlog in Gmail, keeping only the 10 newest unread
+        cleaned_backlog = gmail_service.clean_inbox_backlog(keep_latest=MAX_STREAM_LIMIT)
+        if cleaned_backlog > 0:
+            logger.info(f"🧹 Cleaned {cleaned_backlog} old backlog emails in Gmail upon watcher startup.")
+
+        # 2. Scan initial unreads
         try:
-            initial_unreads = gmail_service.get_unread_emails(limit=10)
-            logger.info(f"Initial inbox check found {len(initial_unreads)} unread email(s).")
+            initial_unreads = gmail_service.get_unread_emails(limit=MAX_STREAM_LIMIT)
+            logger.info(f"Initial inbox scan found {len(initial_unreads)} unread email(s).")
             for item in initial_unreads:
-                self._notified_email_ids.add(item["id"])
-                # Send immediate alert to owner/authorized channels upon engine spin-up
-                await self._dispatch_dual_channel_alert(item, is_initial=True)
+                if item["id"] not in self._notified_email_ids:
+                    self._notified_email_ids.add(item["id"])
+                    await self._dispatch_dual_channel_alert(item, is_initial=True)
         except Exception as e:
             logger.error(f"Error during initial inbox scan: {e}")
 
+        # 3. Continuous watcher loop
         while self._is_running:
             try:
                 await asyncio.sleep(interval)
-                unreads = gmail_service.get_unread_emails(limit=10)
+                unreads = gmail_service.get_unread_emails(limit=MAX_STREAM_LIMIT)
 
                 for item in unreads:
                     if item["id"] not in self._notified_email_ids:
@@ -240,7 +311,7 @@ class TelegramGmailBotEngine(BaseBotEngine):
                 logger.error(f"Error in Gmail watcher loop: {e}")
 
     async def _dispatch_dual_channel_alert(self, item: Dict[str, Any], is_initial: bool = False) -> None:
-        """Dispatches automated alert to Telegram and WhatsApp (Master Admin)."""
+        """Dispatches automated alert with sliding-window FIFO buffer (max 10 items)."""
         sender_addr = item.get("from", "")
         account_addr = item.get("account", "")
         subject = item.get("subject", "(Tanpa Subjek)")
@@ -271,7 +342,10 @@ class TelegramGmailBotEngine(BaseBotEngine):
             # Push to Telegram Owner
             if settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
                 owner_chat = settings.TELEGRAM_AUTHORIZED_CHAT_IDS[0]
-                await telegram_handler.send_message(owner_chat, header_alert, reply_markup=markup)
+                msg_id = await telegram_handler.send_message(owner_chat, header_alert, reply_markup=markup)
+                if msg_id and msg_id != 99999:
+                    self._record_stream_entry(eid, owner_chat, msg_id, subject)
+                    await self._enforce_stream_window()
 
             # Push to Master WhatsApp Owner Enclave
             if whatsapp_handler and settings.MASTER_ADMIN_WHATSAPP_NUMBER:
@@ -285,7 +359,10 @@ class TelegramGmailBotEngine(BaseBotEngine):
         card_text, markup = telegram_handler._build_email_card(item)
         header_alert = f"<b>{prefix} EMAIL MASUK!</b> 📬\n\n" + card_text
         for chat_id in settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
-            await telegram_handler.send_message(chat_id, header_alert, reply_markup=markup)
+            msg_id = await telegram_handler.send_message(chat_id, header_alert, reply_markup=markup)
+            if msg_id and msg_id != 99999:
+                self._record_stream_entry(eid, chat_id, msg_id, subject)
+                await self._enforce_stream_window()
 
         # 3. Direct Dispatch to Master Admin WhatsApp
         if whatsapp_handler and settings.MASTER_ADMIN_WHATSAPP_NUMBER:
