@@ -167,6 +167,8 @@ class SessionManager:
         """
         count = len(self._sessions)
         self._sessions.clear()
+        self._save_topic_store({})
+        self._save_inbox_state({})
         return count
 
 

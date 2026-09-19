@@ -342,7 +342,7 @@ class TestCoreFramework(unittest.TestCase):
             ci_content = f.read()
         self.assertIn("quality-control-gate", ci_content)
         self.assertIn("apps_bot_manager.py test", ci_content)
-        self.assertIn("deploy-to-koyeb", ci_content)
+        self.assertIn("deploy-to-production", ci_content)
 
     def test_federated_a2a_protocol_mesh(self):
         """Verify Phase 6 Pillar 1: Inter-Agent Protocol Mesh (A2A/MCP/AIP) & Sub-100ms passing."""

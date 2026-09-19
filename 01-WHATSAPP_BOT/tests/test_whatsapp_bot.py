@@ -7,6 +7,7 @@ import os
 import sys
 import unittest
 import asyncio
+from unittest.mock import AsyncMock, MagicMock
 from starlette.testclient import TestClient
 
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -30,6 +31,16 @@ class TestWhatsAppBotModule(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
         session_manager.clear_all()
+        # Mock Telegram HTTP dispatch to prevent test pollution in real channels
+        self._orig_post = whatsapp_handler.client.post
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"ok": True, "result": {"message_thread_id": 999}}
+        whatsapp_handler.client.post = AsyncMock(return_value=mock_resp)
+
+    def tearDown(self):
+        whatsapp_handler.client.post = self._orig_post
+        session_manager.purge_all_simulated_sessions()
 
     def test_health_root_endpoint(self):
         """Test GET / returns 200 OK and service metadata."""
