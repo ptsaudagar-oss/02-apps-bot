@@ -154,6 +154,22 @@ class WhatsAppMessageHandler:
                     f"━━━━━━━━━━━━━━━━━━\n"
                     f"⚡ <i>Dedicated WA Forwarder (@Ada_WA_Masoex_bot)</i>"
                 )
+                # Buat direct deep-link ke WhatsApp (wa.me)
+                clean_phone = "".join(filter(str.isdigit, str(sender)))
+                wa_direct_url = f"https://wa.me/{clean_phone}"
+
+                wa_keyboard = {
+                    "inline_keyboard": [
+                        [
+                            {"text": "💬 Buka Chat di WhatsApp", "url": wa_direct_url}
+                        ],
+                        [
+                            {"text": "⚡ Ringkas AI", "callback_data": f"wa_summary:{sender}"},
+                            {"text": "📝 Draf Balasan", "callback_data": f"wa_draft:{sender}"}
+                        ]
+                    ]
+                }
+
                 for chat_id in settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
                     asyncio.create_task(
                         self.client.post(
@@ -161,7 +177,8 @@ class WhatsAppMessageHandler:
                             json={
                                 "chat_id": chat_id,
                                 "text": wa_forward_text,
-                                "parse_mode": "HTML"
+                                "parse_mode": "HTML",
+                                "reply_markup": wa_keyboard
                             },
                             timeout=5.0
                         )
