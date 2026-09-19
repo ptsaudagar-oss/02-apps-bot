@@ -16,6 +16,8 @@ from core.ai_helper import ai_helper
 from core import context_loader
 from core.privacy_enclave import privacy_enclave
 from core.telemetry import telemetry_hub
+import time
+import asyncio
 
 try:
     from .session_manager import session_manager, UserSession
@@ -138,6 +140,33 @@ class WhatsAppMessageHandler:
         clean_text = sanitized_body.lower().strip()
 
         logger.info(f"Incoming WhatsApp message from {sender} ({sender_name}): '{body}'")
+
+        # ⚡ REAL-TIME DISPATCH: Teruskan chat WA masuk ke Telegram Master Owner (Satu Pintu Komando)
+        try:
+            if settings.TELEGRAM_BOT_TOKEN and settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
+                wa_forward_text = (
+                    f"🟢 <b>[WHATSAPP CHAT MASUK]</b> 💬\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"• <b>Dari:</b> <code>+{sender}</code> ({sender_name})\n"
+                    f"• <b>Pesan:</b> {body}\n"
+                    f"• <b>Waktu:</b> <code>{time.strftime('%Y-%m-%d %H:%M:%S')}</code>\n"
+                    f"━━━━━━━━━━━━━━━━━━\n"
+                    f"⚡ <i>Dual-Channel WhatsApp-to-Telegram Bridge</i>"
+                )
+                for chat_id in settings.TELEGRAM_AUTHORIZED_CHAT_IDS:
+                    asyncio.create_task(
+                        self.client.post(
+                            f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}/sendMessage",
+                            json={
+                                "chat_id": chat_id,
+                                "text": wa_forward_text,
+                                "parse_mode": "HTML"
+                            },
+                            timeout=5.0
+                        )
+                    )
+        except Exception as forward_err:
+            logger.error(f"Error dispatching WA message to Telegram: {forward_err}")
 
         # Command & Keyword Routing
         if any(w in clean_text for w in ("halo", "hai", "hi", "menu", "start", "help")):
