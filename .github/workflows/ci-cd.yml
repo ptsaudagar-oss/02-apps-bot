@@ -34,14 +34,13 @@ jobs:
           python apps_bot_manager.py audit-phase4
           python apps_bot_manager.py audit-phase5
 
-  deploy-to-koyeb:
-    name: "Koyeb Cloud Zero-Downtime Deployment (Singapore Region)"
+  deploy-to-production:
+    name: "Zeabur Cloud Production Deployment Gate"
     needs: quality-control-gate
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - name: "Trigger Koyeb Production Deployment Signal"
+      - name: "Trigger Production Deployment Signal"
         run: |
-          echo "Triggering zero-downtime container deployment on Koyeb Cloud (Singapore Region)..."
-          # Koyeb automatically pulls and redeploys upon push to main
-          echo "Koyeb Cloud deployment signal dispatched successfully."
+          echo "✅ Quality Control Gate 100% Passed."
+          echo "🚀 Autonomous Sovereign Bot Ecosystem ready for Zeabur Cloud Deployment."
